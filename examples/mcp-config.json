@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mitmproxy": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mitmproxy-mcp",
+        "run",
+        "mitmproxy-mcp"
+      ]
+    }
+  }
+}
