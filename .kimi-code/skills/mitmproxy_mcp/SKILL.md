@@ -26,7 +26,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 
 | Tool | Commands | Purpose |
 |------|----------|---------|
-| `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all` | Proxy lifecycle |
+| `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` | Proxy lifecycle |
 | `flow_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
@@ -123,6 +123,44 @@ flow_ctl(cmd="list", websocket_only=True)
 flow_ctl(cmd="get", flow_id=5, max_content_size=4096)
 ```
 
+### 8. Protocol metadata
+
+Every flow exposes a `protocol` object with HTTP version, ALPN, TLS version and SNI for both client and server connections. Use it to identify HTTP/2 vs HTTP/3 (QUIC) traffic:
+
+```python
+flow_ctl(cmd="get", flow_id=1)["flow"]["protocol"]
+```
+
+### 9. WireGuard transparent proxy
+
+Start the proxy in WireGuard mode to capture all traffic (including QUIC/HTTP3) from iOS, Android, macOS or Windows clients:
+
+```python
+proxy_ctl(
+    cmd="start",
+    host="0.0.0.0",
+    port=51820,
+    extra_options={"mode": ["wireguard"]},
+)
+# Returns a wireguard_config INI for the client.
+proxy_ctl(cmd="wireguard_config")
+```
+
+> Trust the mitmproxy CA on the client to decrypt HTTPS/HTTP3.
+
+### 10. TLS / certificate options
+
+- `ssl_insecure=True` skips upstream server certificate verification.
+- For custom upstream CA or mTLS, pass mitmproxy native options via `extra_options`:
+
+```python
+proxy_ctl(cmd="start", extra_options={
+    "ssl_verify_upstream": True,
+    "ssl_ca_file": "/path/to/server-ca.pem",
+    "client_certs": "/path/to/client-cert.pem",
+})
+```
+
 ## Best practices
 
 - Start with `proxy_ctl(cmd="status")` to check whether the proxy is running.
@@ -130,6 +168,8 @@ flow_ctl(cmd="get", flow_id=5, max_content_size=4096)
 - Use `max_content_size` in `flow_ctl(cmd="get")` to avoid flooding context with large bodies.
 - Capture rules use include/exclude logic; if no include rules exist, everything is captured.
 - WebSocket connections appear as HTTP upgrade flows with `is_websocket=True` and a `websocket.messages` list.
+- Check `flow["protocol"]` to see HTTP version, ALPN, TLS version and SNI.
+- Use `tool_info("proxy_ctl", cmd="start")` and `tool_info("proxy_ctl", cmd="wireguard_config")` for details.
 
 ## Testing
 
