@@ -191,10 +191,12 @@ The `store_id` field in `FlowModel` is the identifier LLMs should use with these
 ## Adding a new tool
 
 1. Define the function in `src/mitmproxy_mcp/server.py` with `@mcp.tool()`.
-2. Use Pydantic `Header` from `models.py` for header parameters.
-3. Return `{"success": bool, ...}` shaped dicts for consistency.
-4. Wrap internal exceptions and return `"error": str(e)` rather than crashing the server.
-5. Add tests in `tests/test_server.py` or a new appropriate test file.
+2. Keep the docstring minimal: one-line summary + command list + pointer to `tool_info`.
+3. Add detailed docs to `src/mitmproxy_mcp/tool_info.py`.
+4. Use Pydantic `Header` from `models.py` for header parameters.
+5. Return `{"success": bool, ...}` shaped dicts for consistency.
+6. Wrap internal exceptions and return `"error": str(e)` rather than crashing the server.
+7. Add tests in `tests/test_server.py` or a new appropriate test file.
 
 ## Common commands
 
@@ -219,5 +221,12 @@ uv pip install -e ".[dev]"
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
 | `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
 | `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+| `tool_info(tool_name, cmd=None)` | Progressive documentation for any tool/command |
 
 Use `proxy_ctl(cmd="clear_all", stop_proxy=False)` to clear all captured flows, automatic rules, capture rules and mappings in one call.
+
+Use `tool_info(tool_name, cmd)` when the LLM needs detailed parameter descriptions or examples. This keeps the static tool schema small while preserving full documentation on demand.
+
+### Progressive prompts
+
+Tool docstrings are intentionally minimal (one-line summary + command list). Detailed docs live in `src/mitmproxy_mcp/tool_info.py` and are exposed via `tool_info`. Rule-like tools accept plain `dict` payloads rather than full Pydantic models, reducing the static schema size significantly.

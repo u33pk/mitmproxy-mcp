@@ -25,8 +25,6 @@ from mitmproxy_mcp.server import (
     proxy_ctl,
     rule_ctl,
 )
-from mitmproxy_mcp.proxy import CaptureRule
-from mitmproxy_mcp.rules import Action, Rule
 
 
 @pytest.fixture(autouse=True)
@@ -99,19 +97,19 @@ def test_automatic_rule_modifies_response() -> None:
 
         r = rule_ctl(
             cmd="add",
-            rule=Rule(
-                id="modify-api",
-                filter=f"~u 127.0.0.1:{server_port}/api",
-                phase="response",
-                actions=[
-                    Action(
-                        type="set_header",
-                        target="response",
-                        name="X-Modified",
-                        value="true",
-                    )
+            rule={
+                "id": "modify-api",
+                "filter": f"~u 127.0.0.1:{server_port}/api",
+                "phase": "response",
+                "actions": [
+                    {
+                        "type": "set_header",
+                        "target": "response",
+                        "name": "X-Modified",
+                        "value": "true",
+                    }
                 ],
-            ),
+            },
         )
         assert r["success"] is True
 
@@ -152,12 +150,12 @@ def test_automatic_rule_blocks_request() -> None:
 
         r = rule_ctl(
             cmd="add",
-            rule=Rule(
-                id="block-health",
-                filter=f"~u 127.0.0.1:{server_port}/health",
-                phase="request",
-                actions=[Action(type="kill")],
-            ),
+            rule={
+                "id": "block-health",
+                "filter": f"~u 127.0.0.1:{server_port}/health",
+                "phase": "request",
+                "actions": [{"type": "kill"}],
+            },
         )
         assert r["success"] is True
 
@@ -193,21 +191,21 @@ def test_capture_rules_include_exclude() -> None:
 
         r = capture_rule_ctl(
             cmd="add",
-            rule=CaptureRule(
-                id="include-api",
-                filter=f"~u 127.0.0.1:{server_port}/api",
-                action="include",
-            ),
+            rule={
+                "id": "include-api",
+                "filter": f"~u 127.0.0.1:{server_port}/api",
+                "action": "include",
+            },
         )
         assert r["success"] is True
 
         r = capture_rule_ctl(
             cmd="add",
-            rule=CaptureRule(
-                id="exclude-internal",
-                filter=f"~u 127.0.0.1:{server_port}/api/internal",
-                action="exclude",
-            ),
+            rule={
+                "id": "exclude-internal",
+                "filter": f"~u 127.0.0.1:{server_port}/api/internal",
+                "action": "exclude",
+            },
         )
         assert r["success"] is True
 
@@ -248,11 +246,11 @@ def test_capture_rules_runtime_update() -> None:
         # Add an include rule that only captures /api.
         capture_rule_ctl(
             cmd="add",
-            rule=CaptureRule(
-                id="api-only",
-                filter=f"~u 127.0.0.1:{server_port}/api",
-                action="include",
-            ),
+            rule={
+                "id": "api-only",
+                "filter": f"~u 127.0.0.1:{server_port}/api",
+                "action": "include",
+            },
         )
 
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page2", proxy_port)

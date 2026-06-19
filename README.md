@@ -149,6 +149,13 @@ Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_conte
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
 | `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL → local file) |
 | `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL rewrite) |
+| `tool_info(tool_name, cmd=None)` | Progressive documentation for any tool/command |
+
+Use `tool_info` to get detailed parameter descriptions and examples without bloating the static tool list. For example:
+
+```json
+{"tool_name": "proxy_ctl", "cmd": "start"}
+```
 
 ## Automatic rules (breakpoints & modifications)
 

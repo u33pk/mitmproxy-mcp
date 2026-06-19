@@ -23,6 +23,7 @@ from mitmproxy_mcp.models import (
 from mitmproxy_mcp.proxy import CaptureRule, ProxyManager
 from mitmproxy_mcp.rules import Rule
 from mitmproxy_mcp.store import FlowStore
+from mitmproxy_mcp.tool_info import get_tool_info
 from mitmproxy_mcp.utils import create_http_flow, decode_body, replay_flows, save_flows
 
 # Ensure all logging goes to stderr so stdout remains clean for MCP stdio.
@@ -431,15 +432,7 @@ def proxy_ctl(
     extra_options: dict[str, Any] | None = None,
     stop_proxy: bool = False,
 ) -> dict[str, Any]:
-    """Control the mitmproxy capture proxy.
-
-    Commands:
-    - start: Start the proxy on host:port.
-    - stop: Stop the proxy.
-    - status: Get current proxy status and number of captured flows.
-    - list_options: List mitmproxy-native options available via extra_options.
-    - clear_all: Clear all flows, rules, capture rules and mappings.
-    """
+    """Control the proxy. Commands: start, stop, status, list_options, clear_all. Use tool_info('proxy_ctl') for details."""
     try:
         if cmd == "start":
             return _proxy_start(
@@ -481,17 +474,7 @@ def flow_ctl(
     stop_proxy: bool = False,
     websocket_only: bool = False,
 ) -> dict[str, Any]:
-    """Manage and inspect captured flows.
-
-    Commands:
-    - list: List flows with optional filters and pagination.
-    - get: Get details of a single flow by flow_id.
-    - delete: Delete a single flow by flow_id.
-    - clear: Clear all in-memory flows.
-    - load: Load flows from a .mitm file (requires path).
-    - save: Save flows to a .mitm file (requires path).
-    - extract_json: Extract JSONPath fields from request/response content.
-    """
+    """Manage captured flows. Commands: list, get, delete, clear, load, save, extract_json. Use tool_info('flow_ctl') for details."""
     try:
         if cmd == "list":
             return _flows_list(
@@ -569,16 +552,7 @@ def flow_action(
     tags: list[str] | None = None,
     use_modified: bool = True,
 ) -> dict[str, Any]:
-    """Perform an action on a captured flow or create/send a request.
-
-    Actions:
-    - replay: Replay a captured flow (requires flow_id).
-    - resume: Resume an intercepted flow (requires flow_id).
-    - kill: Kill a running/intercepted flow (requires flow_id).
-    - update: Modify request/response fields and metadata (requires flow_id).
-    - create: Create a new request flow without sending.
-    - send: Send a new HTTP request.
-    """
+    """Flow operations. Actions: replay, resume, kill, update, create, send. Use tool_info('flow_action') for details."""
     try:
         if action == "replay":
             if flow_id is None:
@@ -640,17 +614,10 @@ def flow_action(
 @mcp.tool()
 def rule_ctl(
     cmd: Literal["list", "add", "delete", "clear"],
-    rule: Rule | None = None,
+    rule: dict[str, Any] | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
-    """Manage automatic modification/breakpoint rules.
-
-    Commands:
-    - list: List all rules.
-    - add: Add or replace a rule (requires rule).
-    - delete: Delete a rule by rule_id.
-    - clear: Delete all rules.
-    """
+    """Automatic rules. Commands: list, add, delete, clear. Use tool_info('rule_ctl') for details."""
     try:
         if cmd == "list":
             rules = proxy_manager.list_rules()
@@ -658,8 +625,9 @@ def rule_ctl(
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
-            proxy_manager.add_rule(rule)
-            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+            rule_obj = Rule(**rule)
+            proxy_manager.add_rule(rule_obj)
+            return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
@@ -677,17 +645,10 @@ def rule_ctl(
 @mcp.tool()
 def capture_rule_ctl(
     cmd: Literal["list", "add", "delete", "clear"],
-    rule: CaptureRule | None = None,
+    rule: dict[str, Any] | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
-    """Manage capture rules (include/exclude).
-
-    Commands:
-    - list: List all capture rules.
-    - add: Add or replace a capture rule (requires rule).
-    - delete: Delete a capture rule by rule_id.
-    - clear: Delete all capture rules.
-    """
+    """Capture rules. Commands: list, add, delete, clear. Use tool_info('capture_rule_ctl') for details."""
     try:
         if cmd == "list":
             rules = proxy_manager.list_capture_rules()
@@ -695,8 +656,9 @@ def capture_rule_ctl(
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
-            proxy_manager.add_capture_rule(rule)
-            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+            rule_obj = CaptureRule(**rule)
+            proxy_manager.add_capture_rule(rule_obj)
+            return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
@@ -724,14 +686,7 @@ def mock_server_ctl(
     ignore_content: bool = False,
     extra: str = "forward",
 ) -> dict[str, Any]:
-    """Control the server-side mock (recorded response playback).
-
-    Commands:
-    - start: Start mock server with captured flows.
-    - add: Add more captured flows to the mock server.
-    - stop: Stop the mock server and clear recorded responses.
-    - status: Show the number of mocked flows.
-    """
+    """Mock server. Commands: start, add, stop, status. Use tool_info('mock_server_ctl') for details."""
     try:
         if cmd == "start":
             return _mock_server_start(
@@ -767,14 +722,7 @@ def map_local_ctl(
     rule: MapLocalRule | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
-    """Manage map_local rules (URL to local file/directory).
-
-    Commands:
-    - list: List all map_local rules.
-    - add: Add or replace a rule (requires rule).
-    - delete: Delete a rule by rule_id.
-    - clear: Delete all map_local rules.
-    """
+    """Map local files. Commands: list, add, delete, clear. Use tool_info('map_local_ctl') for details."""
     try:
         if cmd == "list":
             rules = proxy_manager.list_map_local_rules()
@@ -782,8 +730,9 @@ def map_local_ctl(
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
-            proxy_manager.add_map_local_rule(rule)
-            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+            rule_obj = MapLocalRule(**rule)
+            proxy_manager.add_map_local_rule(rule_obj)
+            return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
@@ -807,14 +756,7 @@ def map_remote_ctl(
     rule: MapRemoteRule | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
-    """Manage map_remote rules (URL rewrite to another remote URL).
-
-    Commands:
-    - list: List all map_remote rules.
-    - add: Add or replace a rule (requires rule).
-    - delete: Delete a rule by rule_id.
-    - clear: Delete all map_remote rules.
-    """
+    """Map remote URLs. Commands: list, add, delete, clear. Use tool_info('map_remote_ctl') for details."""
     try:
         if cmd == "list":
             rules = proxy_manager.list_map_remote_rules()
@@ -822,8 +764,9 @@ def map_remote_ctl(
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
-            proxy_manager.add_map_remote_rule(rule)
-            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+            rule_obj = MapRemoteRule(**rule)
+            proxy_manager.add_map_remote_rule(rule_obj)
+            return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
@@ -839,6 +782,12 @@ def map_remote_ctl(
         return {"success": False, "error": f"Unknown map_remote command: {cmd}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def tool_info(tool_name: str, cmd: str | None = None) -> dict[str, Any]:
+    """Query detailed documentation for any tool. Use this when you need parameter details or examples."""
+    return get_tool_info(tool_name, cmd)
 
 
 def main() -> None:

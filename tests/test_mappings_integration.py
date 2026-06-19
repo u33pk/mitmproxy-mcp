@@ -14,7 +14,6 @@ from mitmproxy_mcp.server import (
     map_remote_ctl,
     proxy_ctl,
 )
-from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule
 
 
 @pytest.fixture(autouse=True)
@@ -77,12 +76,12 @@ def test_map_local_serves_local_file() -> None:
 
         r = map_local_ctl(
             cmd="add",
-            rule=MapLocalRule(
-                id="api-mock",
-                filter=f"~u 127.0.0.1:{server_port}/api/data",
-                url_regex=f"http://127.0.0.1:{server_port}/api/data",
-                local_path="/tmp/mitmproxy_mcp_mock.json",
-            ),
+            rule={
+                "id": "api-mock",
+                "filter": f"~u 127.0.0.1:{server_port}/api/data",
+                "url_regex": f"http://127.0.0.1:{server_port}/api/data",
+                "local_path": "/tmp/mitmproxy_mcp_mock.json",
+            },
         )
         assert r["success"] is True
 
@@ -110,12 +109,12 @@ def test_map_remote_rewrites_url() -> None:
 
         r = map_remote_ctl(
             cmd="add",
-            rule=MapRemoteRule(
-                id="redirect-a-to-b",
-                filter=f"~u 127.0.0.1:{server_a_port}",
-                url_regex=f"http://127.0.0.1:{server_a_port}",
-                replacement=f"http://127.0.0.1:{server_b_port}",
-            ),
+            rule={
+                "id": "redirect-a-to-b",
+                "filter": f"~u 127.0.0.1:{server_a_port}",
+                "url_regex": f"http://127.0.0.1:{server_a_port}",
+                "replacement": f"http://127.0.0.1:{server_b_port}",
+            },
         )
         assert r["success"] is True
 
