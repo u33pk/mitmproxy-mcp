@@ -60,3 +60,31 @@ def test_request_from_model() -> None:
     new_req = request_from_model(model)
     assert new_req.method == "GET"
     assert new_req.host == "example.com"
+
+
+def test_flow_to_model_protocol_info() -> None:
+    flow = _make_flow()
+    flow.request.http_version = "HTTP/2"
+    flow.response = http.Response.make(200, b"ok")
+    flow.response.http_version = "HTTP/2"
+
+    client = flow.client_conn
+    client.alpn = b"h2"
+    client.tls_version = "TLSv1.3"
+    client.sni = "example.com"
+
+    server = flow.server_conn
+    server.alpn = b"h2"
+    server.tls_version = "TLSv1.3"
+    server.sni = "example.com"
+
+    model = flow_to_model(flow)
+    proto = model.protocol
+    assert proto.request_http_version == "HTTP/2"
+    assert proto.response_http_version == "HTTP/2"
+    assert proto.client_alpn == "h2"
+    assert proto.server_alpn == "h2"
+    assert proto.client_tls_version == "TLSv1.3"
+    assert proto.server_tls_version == "TLSv1.3"
+    assert proto.client_sni == "example.com"
+    assert proto.server_sni == "example.com"

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
+from pathlib import Path
 from typing import Any, Literal
 
 from mitmproxy import flowfilter
@@ -12,6 +14,7 @@ from mitmproxy import http
 from mitmproxy import options
 from mitmproxy.addonmanager import Loader
 from mitmproxy.tools.dump import DumpMaster
+from mitmproxy_rs import wireguard
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule, MappingState
@@ -197,6 +200,7 @@ class ProxyManager:
         self._ready = threading.Event()
         self._lock = threading.RLock()
         self._options: dict[str, Any] = {}
+        self._wireguard_config: str | None = None
         self.capture_addon = CaptureAddon(self.store)
         self.rules_addon = RulesAddon()
         self.mapping_state = MappingState()
@@ -278,10 +282,14 @@ class ProxyManager:
                     "error": f"Proxy already running on {self.listen_host}:{self.listen_port}",
                 }
 
+            extra_options = extra_options or {}
+            prepared_options, wg_config = self._prepare_wireguard(host, port, extra_options)
+            self._wireguard_config = wg_config
+
             self._ready.clear()
             self._thread = threading.Thread(
                 target=self._run_proxy,
-                args=(host, port, capture_filter, ssl_insecure, upstream_proxy, extra_options),
+                args=(host, port, capture_filter, ssl_insecure, upstream_proxy, prepared_options),
                 daemon=True,
             )
             self._thread.start()
@@ -298,7 +306,7 @@ class ProxyManager:
                 "capture_filter": capture_filter,
                 "ssl_insecure": ssl_insecure,
                 "upstream_proxy": upstream_proxy,
-                "extra_options": extra_options,
+                "extra_options": prepared_options,
             }
 
         logger.info(f"mitmproxy started on {host}:{port}")
@@ -308,8 +316,10 @@ class ProxyManager:
             "port": port,
             "capture_filter": capture_filter,
         }
-        if extra_options:
-            result["extra_options"] = extra_options
+        if prepared_options:
+            result["extra_options"] = prepared_options
+        if wg_config:
+            result["wireguard_config"] = wg_config
         return result
 
     def list_rules(self) -> list[Rule]:
@@ -446,6 +456,72 @@ class ProxyManager:
         future = asyncio.run_coroutine_threadsafe(_acall(), loop)
         return future.result(timeout=timeout)
 
+    def _prepare_wireguard(
+        self,
+        host: str,
+        port: int,
+        extra_options: dict[str, Any],
+    ) -> tuple[dict[str, Any], str | None]:
+        """If WireGuard mode is requested, generate keys/config and rewrite mode."""
+        modes = extra_options.get("mode")
+        if not modes or modes != ["wireguard"]:
+            return extra_options, None
+
+        conf_path = Path.home() / ".mitmproxy" / "wireguard_mcp.conf"
+        conf_path.parent.mkdir(parents=True, exist_ok=True)
+
+        server_key = wireguard.genkey()
+        client_key = wireguard.genkey()
+        conf_path.write_text(
+            json.dumps(
+                {"server_key": server_key, "client_key": client_key},
+                indent=4,
+            )
+        )
+
+        client_conf = self._build_wireguard_client_conf(host, port, server_key, client_key)
+        prepared = dict(extra_options)
+        prepared["mode"] = [f"wireguard:{conf_path}"]
+        return prepared, client_conf
+
+    @staticmethod
+    def _build_wireguard_client_conf(
+        host: str,
+        port: int,
+        server_key: str,
+        client_key: str,
+    ) -> str:
+        """Build a WireGuard client config matching mitmproxy's native output."""
+        server_pubkey = wireguard.pubkey(server_key)
+        # For endpoints, localhost only makes sense for local testing. Otherwise
+        # callers should start the proxy on an interface/IP reachable by clients.
+        endpoint = f"{host}:{port}"
+        return (
+            "[Interface]\n"
+            f"PrivateKey = {client_key}\n"
+            "Address = 10.0.0.1/32\n"
+            "DNS = 10.0.0.53\n"
+            "\n"
+            "[Peer]\n"
+            f"PublicKey = {server_pubkey}\n"
+            "AllowedIPs = 0.0.0.0/0\n"
+            f"Endpoint = {endpoint}"
+        )
+
+    def wireguard_config(self) -> dict[str, Any]:
+        """Return the WireGuard client config if WireGuard mode was used."""
+        with self._lock:
+            if self._wireguard_config is None:
+                return {
+                    "success": False,
+                    "error": "Proxy is not running in WireGuard mode",
+                }
+            return {
+                "success": True,
+                "wireguard_config": self._wireguard_config,
+                "endpoint": f"{self.listen_host}:{self.listen_port}",
+            }
+
     def stop(self) -> dict[str, Any]:
         """Stop the mitmproxy thread."""
         with self._lock:
@@ -458,6 +534,7 @@ class ProxyManager:
             self._thread = None
             self._loop = None
             self._options = {}
+            self._wireguard_config = None
             self._ready.clear()
 
         try:
@@ -474,10 +551,14 @@ class ProxyManager:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return {
+            result: dict[str, Any] = {
                 "running": self.is_running,
                 "host": self.listen_host,
                 "port": self.listen_port,
                 "capture_filter": self.capture_filter,
                 "captured_flows": self.store.count(),
             }
+            if self._wireguard_config is not None:
+                result["wireguard_config"] = self._wireguard_config
+                result["wireguard_endpoint"] = f"{self.listen_host}:{self.listen_port}"
+            return result

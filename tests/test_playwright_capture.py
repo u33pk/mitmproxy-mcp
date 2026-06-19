@@ -17,7 +17,9 @@ import subprocess
 import time
 
 import pytest
-from playwright.sync_api import sync_playwright
+
+playwright = pytest.importorskip("playwright")
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 from mitmproxy_mcp.server import flows_clear, flows_list, proxy_start, proxy_stop
 

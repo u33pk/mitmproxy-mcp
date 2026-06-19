@@ -109,6 +109,46 @@ For HTTPS interception you must trust the mitmproxy CA certificate:
 
 Install it in your browser or system keychain. See [mitmproxy docs](https://docs.mitmproxy.org/stable/concepts-certificates/) for details.
 
+### Protocol metadata
+
+Every flow now exposes protocol-layer metadata so you can distinguish HTTP/1.1, HTTP/2 and HTTP/3 (QUIC) traffic:
+
+```json
+{
+  "protocol": {
+    "request_http_version": "HTTP/2",
+    "response_http_version": "HTTP/2",
+    "client_alpn": "h2",
+    "server_alpn": "h2",
+    "client_tls_version": "TLSv1.3",
+    "server_tls_version": "TLSv1.3",
+    "client_sni": "example.com",
+    "server_sni": "example.com"
+  }
+}
+```
+
+In WireGuard mode, UDP/QUIC traffic is routed through mitmproxy, so HTTP/3 connections and their ALPN/TLS details are fully visible.
+
+### WireGuard mode (cross-platform transparent proxy)
+
+In addition to regular HTTP/SOCKS proxying, `proxy_ctl(cmd="start")` supports WireGuard mode. On start it auto-generates server and client keys and returns a WireGuard client config that can be imported into iOS, Android, macOS or Windows clients:
+
+```json
+{
+  "cmd": "start",
+  "host": "0.0.0.0",
+  "port": 51820,
+  "extra_options": {
+    "mode": ["wireguard"]
+  }
+}
+```
+
+The returned `wireguard_config` field is the client INI. You can retrieve it again with `proxy_ctl(cmd="wireguard_config")`.
+
+> Note: WireGuard is a Layer-3 VPN and captures all traffic (including QUIC/HTTP3), but you still need to trust the mitmproxy CA certificate to decrypt HTTPS/HTTP3 content.
+
 ### WebSocket traffic
 
 WebSocket connections are captured as HTTP upgrade flows. After a client connects through the proxy, use the `websocket_only` filter to list WebSocket flows:
@@ -141,7 +181,7 @@ Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_conte
 
 | Tool | Commands / Description |
 |------|------------------------|
-| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all` |
+| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |

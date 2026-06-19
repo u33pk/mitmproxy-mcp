@@ -125,6 +125,30 @@ To manually control intercepted flows, use `flow_action(action="resume", flow_id
 }
 ```
 
+## Protocol metadata
+
+`FlowModel` includes a `protocol` field (`ProtocolInfoModel`) populated by `flow_to_model`:
+
+- `request_http_version` / `response_http_version` from `flow.request.http_version` and `flow.response.http_version`
+- `client_alpn` / `server_alpn` decoded from the connection ALPN bytes
+- `client_tls_version` / `server_tls_version`
+- `client_sni` / `server_sni`
+
+This is useful for identifying HTTP/2 vs HTTP/3 traffic. In WireGuard mode, HTTP/3 (QUIC) traffic is routed through mitmproxy as well.
+
+## WireGuard mode
+
+`proxy_ctl(cmd="start")` accepts `extra_options["mode"] = ["wireguard"]`. `ProxyManager._prepare_wireguard`:
+
+1. Generates server/client keys with `mitmproxy_rs.wireguard.genkey()`.
+2. Writes the key JSON to `~/.mitmproxy/wireguard_mcp.conf`.
+3. Rewrites `mode` to `["wireguard:/path/to/conf"]` for mitmproxy.
+4. Returns a client INI config in `start()` and stores it for later retrieval via `proxy_ctl(cmd="wireguard_config")`.
+
+The client config uses `host:port` as the endpoint. For mobile clients, start the proxy on an interface/IP reachable from the device and install the mitmproxy CA.
+
+Implementation files: `src/mitmproxy_mcp/proxy.py`, `src/mitmproxy_mcp/server.py`.
+
 ## WebSocket capture
 
 WebSocket connections are represented by mitmproxy as `HTTPFlow` objects with a `websocket` attribute. The MCP server captures them automatically:
@@ -213,7 +237,7 @@ uv pip install -e ".[dev]"
 
 | Tool | Commands |
 |------|----------|
-| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all` |
+| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |

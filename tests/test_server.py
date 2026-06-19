@@ -13,3 +13,9 @@ def test_proxy_list_options() -> None:
     assert "ssl_insecure" in opts
     assert "tcp_hosts" in opts
     assert "udp_hosts" in opts
+
+
+def test_wireguard_config_when_not_running() -> None:
+    r = proxy_ctl(cmd="wireguard_config")
+    assert r["success"] is False
+    assert "WireGuard" in r["error"] or "WireGuard mode" in r["error"]

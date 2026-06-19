@@ -62,11 +62,23 @@ class WebSocketDataModel(BaseModel):
     timestamp_end: float | None = None
 
 
+class ProtocolInfoModel(BaseModel):
+    request_http_version: str | None = None
+    response_http_version: str | None = None
+    client_alpn: str | None = None
+    server_alpn: str | None = None
+    client_tls_version: str | None = None
+    server_tls_version: str | None = None
+    client_sni: str | None = None
+    server_sni: str | None = None
+
+
 class FlowModel(BaseModel):
     id: str
     store_id: int
     request: RequestModel
     response: ResponseModel | None = None
+    protocol: ProtocolInfoModel = Field(default_factory=ProtocolInfoModel)
     is_websocket: bool = False
     websocket: WebSocketDataModel | None = None
     client_address: list[str] | None = None
@@ -94,6 +106,13 @@ def _decode_content(content: str | None, encoding: Literal["text", "base64"]) ->
     if encoding == "base64":
         return base64.b64decode(content)
     return content.encode("utf-8")
+
+
+def _decode_alpn(alpn: bytes | None) -> str | None:
+    """Decode ALPN bytes to string."""
+    if alpn is None:
+        return None
+    return alpn.decode("ascii", errors="replace")
 
 
 def headers_to_model(headers: http.Headers) -> list[Header]:
@@ -210,11 +229,23 @@ def flow_to_model(
     if is_websocket:
         websocket_model = websocket_to_model(flow.websocket, max_content_size=max_content_size)
 
+    protocol = ProtocolInfoModel(
+        request_http_version=flow.request.http_version,
+        response_http_version=flow.response.http_version if flow.response else None,
+        client_alpn=_decode_alpn(flow.client_conn.alpn) if flow.client_conn else None,
+        server_alpn=_decode_alpn(flow.server_conn.alpn) if flow.server_conn else None,
+        client_tls_version=flow.client_conn.tls_version if flow.client_conn else None,
+        server_tls_version=flow.server_conn.tls_version if flow.server_conn else None,
+        client_sni=flow.client_conn.sni if flow.client_conn else None,
+        server_sni=flow.server_conn.sni if flow.server_conn else None,
+    )
+
     return FlowModel(
         id=flow.id,
         store_id=store_id if store_id is not None else -1,
         request=request_to_model(flow.request),
         response=response_to_model(flow.response) if flow.response else None,
+        protocol=protocol,
         is_websocket=is_websocket,
         websocket=websocket_model,
         client_address=client_address,

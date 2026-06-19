@@ -38,6 +38,12 @@ TOOL_INFO: dict[str, ToolInfo] = {
                 "optional": [],
                 "example": {"cmd": "status"},
             },
+            "wireguard_config": {
+                "description": "Return the WireGuard client configuration when the proxy was started in WireGuard mode. The returned INI can be imported into iOS, Android, macOS or Windows WireGuard clients. Certificate trust is still required for HTTPS/HTTP3 decryption.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "wireguard_config"},
+            },
             "list_options": {
                 "description": "List mitmproxy-native options available via extra_options.",
                 "required": [],

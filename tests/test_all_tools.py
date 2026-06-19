@@ -42,6 +42,10 @@ def test_all_tools() -> None:
     r = proxy_ctl(cmd="start", port=18082)
     assert r["success"] is True
 
+    # 3b. wireguard_config should fail in regular mode
+    r = proxy_ctl(cmd="wireguard_config")
+    assert r["success"] is False
+
     # 4. proxy_status (running)
     r = proxy_ctl(cmd="status")
     assert r["running"] is True

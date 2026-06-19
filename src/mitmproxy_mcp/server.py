@@ -423,7 +423,9 @@ def _mock_server_add_flows(flow_ids: list[int]) -> dict[str, Any]:
 
 @mcp.tool()
 def proxy_ctl(
-    cmd: Literal["start", "stop", "status", "list_options", "clear_all"],
+    cmd: Literal[
+        "start", "stop", "status", "list_options", "clear_all", "wireguard_config"
+    ],
     host: str = "127.0.0.1",
     port: int = 8080,
     capture_filter: str | None = None,
@@ -432,7 +434,7 @@ def proxy_ctl(
     extra_options: dict[str, Any] | None = None,
     stop_proxy: bool = False,
 ) -> dict[str, Any]:
-    """Control the proxy. Commands: start, stop, status, list_options, clear_all. Use tool_info('proxy_ctl') for details."""
+    """Control the proxy. Commands: start, stop, status, list_options, clear_all, wireguard_config. Use tool_info('proxy_ctl') for details."""
     try:
         if cmd == "start":
             return _proxy_start(
@@ -447,6 +449,8 @@ def proxy_ctl(
             return proxy_manager.stop()
         if cmd == "status":
             return proxy_manager.status()
+        if cmd == "wireguard_config":
+            return proxy_manager.wireguard_config()
         if cmd == "list_options":
             return _proxy_list_options()
         if cmd == "clear_all":
