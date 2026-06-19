@@ -350,6 +350,53 @@ TOOL_INFO: dict[str, ToolInfo] = {
             },
         },
     },
+    "ca_ctl": {
+        "summary": "Manage CA certificates, upstream verification and mTLS client certificates.",
+        "commands": {
+            "status": {
+                "description": "Return the current CA/certificate configuration and whether the proxy is running.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "status"},
+            },
+            "export_ca": {
+                "description": "Copy the mitmproxy CA certificate to a directory so it can be installed on a client. The proxy must have been started at least once to generate the CA.",
+                "required": [],
+                "optional": ["output_dir (str, default current directory)"],
+                "example": {"cmd": "export_ca", "output_dir": "/tmp"},
+            },
+            "set_verify_upstream": {
+                "description": "Enable or disable upstream server certificate verification. When disabled, ssl_insecure is set to True.",
+                "required": [],
+                "optional": ["enabled (bool, default True)"],
+                "example": {"cmd": "set_verify_upstream", "enabled": True},
+            },
+            "set_upstream_ca": {
+                "description": "Set a custom CA file or directory used to validate upstream server certificates. Detects file vs directory automatically.",
+                "required": ["ca_path"],
+                "optional": [],
+                "example": {"cmd": "set_upstream_ca", "ca_path": "/path/to/ca.pem"},
+            },
+            "clear_upstream_ca": {
+                "description": "Remove the custom upstream CA setting.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "clear_upstream_ca"},
+            },
+            "set_client_cert": {
+                "description": "Set a client certificate for mTLS. cert_path is required; key_path is required if the key is in a separate file. If the key is encrypted, provide passphrase.",
+                "required": ["cert_path"],
+                "optional": ["key_path (str)", "passphrase (str)"],
+                "example": {"cmd": "set_client_cert", "cert_path": "/path/to/cert.pem", "key_path": "/path/to/key.pem"},
+            },
+            "clear_client_cert": {
+                "description": "Remove the client certificate setting.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "clear_client_cert"},
+            },
+        },
+    },
     "tool_info": {
         "summary": "Query detailed documentation for any MCP tool.",
         "commands": {

@@ -109,6 +109,36 @@ For HTTPS interception you must trust the mitmproxy CA certificate:
 
 Install it in your browser or system keychain. See [mitmproxy docs](https://docs.mitmproxy.org/stable/concepts-certificates/) for details.
 
+### Certificate / CA management (`ca_ctl`)
+
+`ca_ctl` is dedicated to certificate and CA settings, independent of `proxy_ctl`:
+
+| Command | Purpose |
+|---------|---------|
+| `status` | Show current CA/certificate configuration |
+| `export_ca` | Export the mitmproxy CA certificate to a directory |
+| `set_verify_upstream` | Enable/disable upstream server certificate verification |
+| `set_upstream_ca` | Set a CA file or directory for validating upstream servers |
+| `clear_upstream_ca` | Remove the upstream CA setting |
+| `set_client_cert` | Set an mTLS client certificate (optional key/passphrase) |
+| `clear_client_cert` | Remove the client certificate setting |
+
+Examples:
+
+```python
+# Export the CA so it can be installed on a client
+ca_ctl(cmd="export_ca", output_dir="/tmp")
+
+# Mutual verification: validate the upstream server with a custom CA
+ca_ctl(cmd="set_verify_upstream", enabled=True)
+ca_ctl(cmd="set_upstream_ca", ca_path="/path/to/server-ca.pem")
+
+# mTLS
+ca_ctl(cmd="set_client_cert", cert_path="/path/to/client.pem", key_path="/path/to/client.key")
+```
+
+Certificate config persists in `ProxyManager`, so it survives proxy stop/start. Changes also take effect immediately on a running proxy via mitmproxy's `set` command.
+
 ### Protocol metadata
 
 Every flow now exposes protocol-layer metadata so you can distinguish HTTP/1.1, HTTP/2 and HTTP/3 (QUIC) traffic:
@@ -182,6 +212,7 @@ Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_conte
 | Tool | Commands / Description |
 |------|------------------------|
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
+| `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |

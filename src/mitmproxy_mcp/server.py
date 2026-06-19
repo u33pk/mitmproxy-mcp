@@ -461,6 +461,49 @@ def proxy_ctl(
 
 
 @mcp.tool()
+def ca_ctl(
+    cmd: Literal[
+        "status",
+        "export_ca",
+        "set_verify_upstream",
+        "set_upstream_ca",
+        "clear_upstream_ca",
+        "set_client_cert",
+        "clear_client_cert",
+    ],
+    enabled: bool = True,
+    ca_path: str | None = None,
+    cert_path: str | None = None,
+    key_path: str | None = None,
+    passphrase: str | None = None,
+    output_dir: str | None = None,
+) -> dict[str, Any]:
+    """Manage certificates and CA settings. Commands: status, export_ca, set_verify_upstream, set_upstream_ca, clear_upstream_ca, set_client_cert, clear_client_cert. Use tool_info('ca_ctl') for details."""
+    try:
+        if cmd == "status":
+            return proxy_manager.ca_status()
+        if cmd == "export_ca":
+            return proxy_manager.export_ca(output_dir)
+        if cmd == "set_verify_upstream":
+            return proxy_manager.set_verify_upstream(enabled)
+        if cmd == "set_upstream_ca":
+            if ca_path is None:
+                return {"success": False, "error": "ca_path is required"}
+            return proxy_manager.set_upstream_ca(ca_path)
+        if cmd == "clear_upstream_ca":
+            return proxy_manager.clear_upstream_ca()
+        if cmd == "set_client_cert":
+            if cert_path is None:
+                return {"success": False, "error": "cert_path is required"}
+            return proxy_manager.set_client_cert(cert_path, key_path, passphrase)
+        if cmd == "clear_client_cert":
+            return proxy_manager.clear_client_cert()
+        return {"success": False, "error": f"Unknown ca command: {cmd}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
 def flow_ctl(
     cmd: Literal["list", "get", "delete", "clear", "load", "save", "extract_json"],
     flow_id: int | None = None,

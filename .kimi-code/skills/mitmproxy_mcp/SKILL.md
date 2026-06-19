@@ -27,6 +27,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 | Tool | Commands | Purpose |
 |------|----------|---------|
 | `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` | Proxy lifecycle |
+| `ca_ctl` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` | Certificate / CA management |
 | `flow_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
@@ -148,18 +149,23 @@ proxy_ctl(cmd="wireguard_config")
 
 > Trust the mitmproxy CA on the client to decrypt HTTPS/HTTP3.
 
-### 10. TLS / certificate options
+### 10. TLS / certificate options (`ca_ctl`)
 
-- `ssl_insecure=True` skips upstream server certificate verification.
-- For custom upstream CA or mTLS, pass mitmproxy native options via `extra_options`:
+Use the dedicated `ca_ctl` tool for certificate management:
 
 ```python
-proxy_ctl(cmd="start", extra_options={
-    "ssl_verify_upstream": True,
-    "ssl_ca_file": "/path/to/server-ca.pem",
-    "client_certs": "/path/to/client-cert.pem",
-})
+# Export mitmproxy CA for client installation
+ca_ctl(cmd="export_ca", output_dir="/tmp")
+
+# Validate upstream server with a custom CA
+ca_ctl(cmd="set_verify_upstream", enabled=True)
+ca_ctl(cmd="set_upstream_ca", ca_path="/path/to/server-ca.pem")
+
+# mTLS
+ca_ctl(cmd="set_client_cert", cert_path="/path/to/client.pem", key_path="/path/to/client.key")
 ```
+
+`ca_ctl` config persists across proxy stop/start. If you only need a quick test, `proxy_ctl(cmd="start", ssl_insecure=True)` still works.
 
 ## Best practices
 

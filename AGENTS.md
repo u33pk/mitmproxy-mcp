@@ -125,6 +125,22 @@ To manually control intercepted flows, use `flow_action(action="resume", flow_id
 }
 ```
 
+## Certificate / CA management (`ca_ctl`)
+
+Certificate-related operations are isolated in the `ca_ctl` tool. Internally they are stored in `ProxyManager._ca_config` (`CaConfig`):
+
+- `verify_upstream` controls `ssl_insecure` (inverted).
+- `upstream_ca_file` maps to `ssl_verify_upstream_trusted_ca`.
+- `upstream_ca_confdir` maps to `ssl_verify_upstream_trusted_confdir`.
+- `client_cert` maps to `client_certs`.
+- `cert_passphrase` maps to `cert_passphrase`.
+
+When the proxy is running, changes are applied via `proxy_manager.call("set", option, value)`. When the proxy is not running, the config is merged into `options.Options` on the next `proxy_ctl(cmd="start")`.
+
+`set_client_cert` combines certificate and optional key into a single PEM file under `~/.mitmproxy/` because mitmproxy's `client_certs` option expects one path.
+
+`clear_all()` does **not** clear CA configuration, since CA settings are a separate concern from flows, rules and mappings.
+
 ## Protocol metadata
 
 `FlowModel` includes a `protocol` field (`ProtocolInfoModel`) populated by `flow_to_model`:
@@ -238,6 +254,7 @@ uv pip install -e ".[dev]"
 | Tool | Commands |
 |------|----------|
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
+| `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |

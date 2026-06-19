@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from cryptography.hazmat.primitives import serialization
 from mitmproxy import flowfilter
 from mitmproxy import http
 from mitmproxy import options
@@ -189,6 +192,32 @@ class CaptureAddon:
         pass
 
 
+@dataclass
+class CaConfig:
+    """Certificate / CA configuration managed by ca_ctl."""
+
+    verify_upstream: bool | None = None
+    upstream_ca_file: str | None = None
+    upstream_ca_confdir: str | None = None
+    client_cert: str | None = None
+    cert_passphrase: str | None = None
+
+    def to_options(self) -> dict[str, Any]:
+        """Return mitmproxy option kwargs for this config."""
+        opts: dict[str, Any] = {}
+        if self.verify_upstream is not None:
+            opts["ssl_insecure"] = not self.verify_upstream
+        if self.upstream_ca_file:
+            opts["ssl_verify_upstream_trusted_ca"] = self.upstream_ca_file
+        if self.upstream_ca_confdir:
+            opts["ssl_verify_upstream_trusted_confdir"] = self.upstream_ca_confdir
+        if self.client_cert:
+            opts["client_certs"] = self.client_cert
+        if self.cert_passphrase:
+            opts["cert_passphrase"] = self.cert_passphrase
+        return opts
+
+
 class ProxyManager:
     """Manages a mitmproxy DumpMaster running in a background thread."""
 
@@ -201,6 +230,7 @@ class ProxyManager:
         self._lock = threading.RLock()
         self._options: dict[str, Any] = {}
         self._wireguard_config: str | None = None
+        self._ca_config = CaConfig()
         self.capture_addon = CaptureAddon(self.store)
         self.rules_addon = RulesAddon()
         self.mapping_state = MappingState()
@@ -221,8 +251,14 @@ class ProxyManager:
         opts_kwargs: dict[str, Any] = {
             "listen_host": host,
             "listen_port": port,
-            "ssl_insecure": ssl_insecure,
         }
+        # ca_ctl config takes precedence over the legacy ssl_insecure parameter.
+        if self._ca_config.verify_upstream is not None:
+            opts_kwargs["ssl_insecure"] = not self._ca_config.verify_upstream
+        else:
+            opts_kwargs["ssl_insecure"] = ssl_insecure
+        opts_kwargs.update(self._ca_config.to_options())
+
         if upstream_proxy:
             opts_kwargs["mode"] = [f"upstream:{upstream_proxy}"]
         if extra_options:
@@ -521,6 +557,142 @@ class ProxyManager:
                 "wireguard_config": self._wireguard_config,
                 "endpoint": f"{self.listen_host}:{self.listen_port}",
             }
+
+    # ------------------------------------------------------------------
+    # Certificate / CA management
+    # ------------------------------------------------------------------
+
+    def ca_status(self) -> dict[str, Any]:
+        """Return the current CA/certificate configuration."""
+        with self._lock:
+            return {
+                "success": True,
+                "verify_upstream": self._ca_config.verify_upstream,
+                "upstream_ca_file": self._ca_config.upstream_ca_file,
+                "upstream_ca_confdir": self._ca_config.upstream_ca_confdir,
+                "client_cert": self._ca_config.client_cert,
+                "cert_passphrase_set": self._ca_config.cert_passphrase is not None,
+                "proxy_running": self.is_running,
+            }
+
+    def _apply_ca_option(self, name: str, value: Any) -> None:
+        """Apply a single mitmproxy option in the running proxy."""
+        if self.is_running:
+            if isinstance(value, bool):
+                self.call("set", name, "true" if value else "false")
+            else:
+                self.call("set", name, str(value) if value is not None else "")
+
+    def set_verify_upstream(self, enabled: bool) -> dict[str, Any]:
+        """Enable or disable upstream server certificate verification."""
+        with self._lock:
+            self._ca_config.verify_upstream = enabled
+            self._apply_ca_option("ssl_insecure", not enabled)
+        return {"success": True, "verify_upstream": enabled}
+
+    def set_upstream_ca(self, ca_path: str) -> dict[str, Any]:
+        """Set a custom CA file or directory for upstream verification."""
+        path = Path(ca_path).expanduser()
+        if not path.exists():
+            return {"success": False, "error": f"CA path does not exist: {ca_path}"}
+
+        with self._lock:
+            if path.is_dir():
+                self._ca_config.upstream_ca_confdir = str(path)
+                self._ca_config.upstream_ca_file = None
+                self._apply_ca_option("ssl_verify_upstream_trusted_confdir", str(path))
+                self._apply_ca_option("ssl_verify_upstream_trusted_ca", "")
+            else:
+                self._ca_config.upstream_ca_file = str(path)
+                self._ca_config.upstream_ca_confdir = None
+                self._apply_ca_option("ssl_verify_upstream_trusted_ca", str(path))
+                self._apply_ca_option("ssl_verify_upstream_trusted_confdir", "")
+        return {"success": True, "upstream_ca": str(path)}
+
+    def clear_upstream_ca(self) -> dict[str, Any]:
+        """Remove the custom upstream CA setting."""
+        with self._lock:
+            self._ca_config.upstream_ca_file = None
+            self._ca_config.upstream_ca_confdir = None
+            self._apply_ca_option("ssl_verify_upstream_trusted_ca", "")
+            self._apply_ca_option("ssl_verify_upstream_trusted_confdir", "")
+        return {"success": True}
+
+    def _combine_client_cert(
+        self,
+        cert_path: str,
+        key_path: str | None,
+        passphrase: str | None,
+    ) -> str:
+        """Combine certificate and optional key into a single PEM file."""
+        cert_file = Path(cert_path).expanduser()
+        cert_pem = cert_file.read_bytes()
+
+        key_pem = b""
+        if key_path:
+            key_file = Path(key_path).expanduser()
+            key_data = key_file.read_bytes()
+            key = serialization.load_pem_private_key(
+                key_data,
+                password=passphrase.encode() if passphrase else None,
+            )
+            key_pem = key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+
+        out_dir = Path.home() / ".mitmproxy"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"client_cert_{cert_file.stem}.pem"
+        out_file.write_bytes(cert_pem + b"\n" + key_pem)
+        return str(out_file)
+
+    def set_client_cert(
+        self,
+        cert_path: str,
+        key_path: str | None = None,
+        passphrase: str | None = None,
+    ) -> dict[str, Any]:
+        """Set a client certificate for mTLS."""
+        cert_file = Path(cert_path).expanduser()
+        if not cert_file.exists():
+            return {"success": False, "error": f"Certificate file does not exist: {cert_path}"}
+        if key_path and not Path(key_path).expanduser().exists():
+            return {"success": False, "error": f"Key file does not exist: {key_path}"}
+
+        with self._lock:
+            combined = self._combine_client_cert(cert_path, key_path, passphrase)
+            self._ca_config.client_cert = combined
+            if passphrase:
+                self._ca_config.cert_passphrase = passphrase
+            self._apply_ca_option("client_certs", combined)
+            if passphrase:
+                self._apply_ca_option("cert_passphrase", passphrase)
+        return {"success": True, "client_cert": combined}
+
+    def clear_client_cert(self) -> dict[str, Any]:
+        """Remove the client certificate setting."""
+        with self._lock:
+            self._ca_config.client_cert = None
+            self._ca_config.cert_passphrase = None
+            self._apply_ca_option("client_certs", "")
+            self._apply_ca_option("cert_passphrase", "")
+        return {"success": True}
+
+    def export_ca(self, output_dir: str | None = None) -> dict[str, Any]:
+        """Copy the mitmproxy CA certificate to the requested directory."""
+        src = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.cer"
+        if not src.exists():
+            return {
+                "success": False,
+                "error": f"mitmproxy CA certificate not found at {src}. Start the proxy once to generate it.",
+            }
+        dest_dir = Path(output_dir).expanduser() if output_dir else Path.cwd()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / src.name
+        shutil.copy2(src, dest)
+        return {"success": True, "path": str(dest)}
 
     def stop(self) -> dict[str, Any]:
         """Stop the mitmproxy thread."""
