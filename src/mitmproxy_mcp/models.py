@@ -6,6 +6,7 @@ import base64
 from typing import Any, Literal
 
 from mitmproxy import http
+from mitmproxy.websocket import WebSocketData, WebSocketMessage
 from pydantic import BaseModel, Field
 
 
@@ -41,11 +42,33 @@ class ResponseModel(BaseModel):
     timestamp_end: float
 
 
+class WebSocketMessageModel(BaseModel):
+    from_client: bool
+    type: Literal["text", "binary"]
+    content: str | None = None
+    text: str | None = None
+    content_encoding: Literal["text", "base64"] = "text"
+    content_length: int = 0
+    timestamp: float
+    dropped: bool = False
+    injected: bool = False
+
+
+class WebSocketDataModel(BaseModel):
+    messages: list[WebSocketMessageModel] = Field(default_factory=list)
+    closed_by_client: bool | None = None
+    close_code: int | None = None
+    close_reason: str | None = None
+    timestamp_end: float | None = None
+
+
 class FlowModel(BaseModel):
     id: str
     store_id: int
     request: RequestModel
     response: ResponseModel | None = None
+    is_websocket: bool = False
+    websocket: WebSocketDataModel | None = None
     client_address: list[str] | None = None
     server_address: list[str] | None = None
     comment: str | None = None
@@ -114,7 +137,65 @@ def response_to_model(resp: http.Response) -> ResponseModel:
     )
 
 
-def flow_to_model(flow: http.HTTPFlow, store_id: int | None = None) -> FlowModel:
+def websocket_message_to_model(
+    msg: WebSocketMessage,
+    max_content_size: int | None = None,
+) -> WebSocketMessageModel:
+    """Convert a mitmproxy WebSocketMessage to a Pydantic model."""
+    raw = msg.content
+    if msg.is_text:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", errors="replace")
+        content = text
+        content_encoding: Literal["text", "base64"] = "text"
+    else:
+        text = None
+        content = base64.b64encode(raw).decode("ascii")
+        content_encoding = "base64"
+
+    truncated = False
+    if max_content_size is not None and len(raw) > max_content_size:
+        truncated = True
+        if msg.is_text:
+            content = content[:max_content_size] + "\n…(truncated)"
+        else:
+            # Re-encode truncated bytes to base64.
+            content = base64.b64encode(raw[:max_content_size]).decode("ascii") + "\n…(truncated)"
+
+    return WebSocketMessageModel(
+        from_client=msg.from_client,
+        type="text" if msg.is_text else "binary",
+        content=content,
+        text=text if not truncated else (text[:max_content_size] + "\n…(truncated)" if text else None),
+        content_encoding=content_encoding,
+        content_length=len(raw),
+        timestamp=msg.timestamp,
+        dropped=msg.dropped,
+        injected=msg.injected,
+    )
+
+
+def websocket_to_model(
+    ws: WebSocketData,
+    max_content_size: int | None = None,
+) -> WebSocketDataModel:
+    """Convert mitmproxy WebSocketData to a Pydantic model."""
+    return WebSocketDataModel(
+        messages=[websocket_message_to_model(m, max_content_size=max_content_size) for m in ws.messages],
+        closed_by_client=ws.closed_by_client,
+        close_code=ws.close_code,
+        close_reason=ws.close_reason,
+        timestamp_end=ws.timestamp_end,
+    )
+
+
+def flow_to_model(
+    flow: http.HTTPFlow,
+    store_id: int | None = None,
+    max_content_size: int | None = None,
+) -> FlowModel:
     """Convert an mitmproxy HTTPFlow to a Pydantic FlowModel."""
     client_address: list[str] | None = None
     server_address: list[str] | None = None
@@ -124,11 +205,18 @@ def flow_to_model(flow: http.HTTPFlow, store_id: int | None = None) -> FlowModel
     if flow.server_conn and flow.server_conn.address:
         server_address = [str(flow.server_conn.address[0]), str(flow.server_conn.address[1])]
 
+    is_websocket = flow.websocket is not None
+    websocket_model = None
+    if is_websocket:
+        websocket_model = websocket_to_model(flow.websocket, max_content_size=max_content_size)
+
     return FlowModel(
         id=flow.id,
         store_id=store_id if store_id is not None else -1,
         request=request_to_model(flow.request),
         response=response_to_model(flow.response) if flow.response else None,
+        is_websocket=is_websocket,
+        websocket=websocket_model,
         client_address=client_address,
         server_address=server_address,
         comment=flow.comment or None,

@@ -52,6 +52,9 @@ uv run pytest tests/test_mock_server.py -m integration -v
 # Integration: URL mappings
 uv run pytest tests/test_mappings_integration.py -m integration -v
 
+# Integration: WebSocket capture
+uv run pytest tests/test_websocket_integration.py -m integration -v
+
 # Integration: Playwright browser capture
 uv pip install -e ".[dev]"
 playwright install chromium
@@ -121,6 +124,17 @@ To manually control intercepted flows, use `flow_action(action="resume", flow_id
   ]
 }
 ```
+
+## WebSocket capture
+
+WebSocket connections are represented by mitmproxy as `HTTPFlow` objects with a `websocket` attribute. The MCP server captures them automatically:
+
+- The HTTP upgrade request/response is captured by the existing `response` hook.
+- `CaptureAddon.websocket_start` ensures the flow is tracked.
+- `CaptureAddon.websocket_message` updates `flow.metadata["websocket_message_count"]`.
+- Messages accumulate on `flow.websocket.messages` and are serialized by `flow_to_model`.
+
+Use `flow_ctl(cmd="list", websocket_only=True)` to find WebSocket flows and `flow_ctl(cmd="get", flow_id=...)` to inspect messages. Binary messages are base64-encoded; text messages expose both `content` and `text`.
 
 ## Capture rules
 

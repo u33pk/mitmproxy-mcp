@@ -164,6 +164,27 @@ class CaptureAddon:
         if self.should_capture(flow):
             self.store.add(flow)
 
+    # ------------------------------------------------------------------
+    # WebSocket hooks
+    # ------------------------------------------------------------------
+
+    def websocket_start(self, flow: http.HTTPFlow) -> None:
+        # The HTTP upgrade response is already captured by `response`, but
+        # ensure the WebSocket flow is tracked in case filters behave
+        # differently at upgrade time.
+        if self.should_capture(flow):
+            self.store.add(flow)
+
+    def websocket_message(self, flow: http.HTTPFlow) -> None:
+        # Messages are appended directly to flow.websocket.messages on the
+        # same object stored in FlowStore, so no extra bookkeeping is needed.
+        if flow.websocket and flow.metadata:
+            flow.metadata["websocket_message_count"] = len(flow.websocket.messages)
+
+    def websocket_end(self, flow: http.HTTPFlow) -> None:
+        # Connection close state is stored on flow.websocket automatically.
+        pass
+
 
 class ProxyManager:
     """Manages a mitmproxy DumpMaster running in a background thread."""

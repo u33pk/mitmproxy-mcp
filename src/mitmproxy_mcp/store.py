@@ -75,8 +75,10 @@ class FlowStore:
                 flow.metadata["tags"] = tags
             return flow
 
-    def count(self) -> int:
+    def count(self, websocket_only: bool = False) -> int:
         with self._lock:
+            if websocket_only:
+                return sum(1 for f in self._flows.values() if f.websocket is not None)
             return len(self._flows)
 
     def list_ids(self) -> list[int]:
@@ -96,10 +98,14 @@ class FlowStore:
         method: str | None = None,
         status: int | None = None,
         search: str | None = None,
+        websocket_only: bool = False,
     ) -> list[tuple[int, http.HTTPFlow]]:
         """Return a paginated, filtered list of (store_id, flow) tuples."""
         with self._lock:
             flows = list(self._flows.items())
+
+        if websocket_only:
+            flows = [(sid, f) for sid, f in flows if f.websocket is not None]
 
         if host:
             flows = [

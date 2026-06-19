@@ -109,6 +109,34 @@ For HTTPS interception you must trust the mitmproxy CA certificate:
 
 Install it in your browser or system keychain. See [mitmproxy docs](https://docs.mitmproxy.org/stable/concepts-certificates/) for details.
 
+### WebSocket traffic
+
+WebSocket connections are captured as HTTP upgrade flows. After a client connects through the proxy, use the `websocket_only` filter to list WebSocket flows:
+
+```json
+{
+  "cmd": "list",
+  "websocket_only": true
+}
+```
+
+Then call `flow_ctl(cmd="get", flow_id=...)` to see the full conversation:
+
+```json
+{
+  "is_websocket": true,
+  "websocket": {
+    "messages": [
+      {"from_client": true,  "type": "text", "text": "hello"},
+      {"from_client": false, "type": "text", "text": "echo: hello"}
+    ],
+    "close_code": 1000
+  }
+}
+```
+
+Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_content_size` on `flow_ctl(cmd="get")` to avoid large message payloads.
+
 ## Tools
 
 | Tool | Commands / Description |
