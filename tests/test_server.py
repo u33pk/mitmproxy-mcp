@@ -1,10 +1,10 @@
 """Tests for mitmproxy_mcp.server tools that do not require a running proxy."""
 
-from mitmproxy_mcp.server import proxy_list_options
+from mitmproxy_mcp.server import proxy_ctl
 
 
 def test_proxy_list_options() -> None:
-    r = proxy_list_options()
+    r = proxy_ctl(cmd="list_options")
     assert "options" in r
     opts = r["options"]
     assert "listen_host" in opts

@@ -46,6 +46,12 @@ uv run pytest tests/test_all_tools.py -m integration -v
 # Integration: automatic rules and capture rules
 uv run pytest tests/test_rules_integration.py -m integration -v
 
+# Integration: mock server
+uv run pytest tests/test_mock_server.py -m integration -v
+
+# Integration: URL mappings
+uv run pytest tests/test_mappings_integration.py -m integration -v
+
 # Integration: Playwright browser capture
 uv pip install -e ".[dev]"
 playwright install chromium
@@ -87,7 +93,7 @@ utils.py       Helpers: create_http_flow, replay_flows, save_flows, decode_body
 
 ## Automatic rules
 
-The server supports automatic rules via `rules_*` tools. A rule consists of:
+The server supports automatic rules via `rule_ctl`. A rule consists of:
 
 - `id`, `name`, `enabled`
 - `phase`: `"request"`, `"response"`, or `"both"`
@@ -98,7 +104,7 @@ Supported actions include `set_header`, `remove_header`, `set_body`, `replace_bo
 
 Rules are evaluated by `RulesAddon` inside mitmproxy's `request`/`response` hooks. Applied rule ids are recorded in `flow.metadata["mitmproxy_mcp_rules_applied"]`.
 
-To manually control intercepted flows, use `flow_resume` and `flow_kill`.
+To manually control intercepted flows, use `flow_action(action="resume", flow_id=...)` and `flow_action(action="kill", flow_id=...)`.
 
 ### Example rule
 
@@ -118,7 +124,7 @@ To manually control intercepted flows, use `flow_resume` and `flow_kill`.
 
 ## Capture rules
 
-Capture rules decide which live flows are stored in `FlowStore`. They are managed via `capture_rules_*` tools.
+Capture rules decide which live flows are stored in `FlowStore`. They are managed via `capture_rule_ctl`.
 
 - `action`: `"include"` or `"exclude"`
 - `filter`: a mitmproxy `flowfilter` expression
@@ -146,10 +152,10 @@ Only capture API traffic and ignore health checks:
 
 ## URL mappings
 
-The server supports mitmproxy's `map_local` and `map_remote` addons through dedicated MCP tools.
+The server supports mitmproxy's `map_local` and `map_remote` addons through `map_local_ctl` and `map_remote_ctl`.
 
-- `map_local_*` tools map matching URLs to local files or directories.
-- `map_remote_*` tools rewrite matching URLs to another remote URL.
+- `map_local_ctl` maps matching URLs to local files or directories.
+- `map_remote_ctl` rewrites matching URLs to another remote URL.
 
 Rules are stored in `MappingState` (`src/mitmproxy_mcp/mappings.py`) and synchronized to mitmproxy's `map_local` / `map_remote` options. The actual file serving and URL rewriting is handled by mitmproxy's native addons.
 
@@ -157,16 +163,16 @@ The `local_path` of a `MapLocalRule` must exist at the time the rule is added, b
 
 ## Mock server
 
-The mock server uses mitmproxy's `serverplayback` addon. It is exposed via `mock_server_*` tools:
+The mock server uses mitmproxy's `serverplayback` addon. It is exposed via `mock_server_ctl`:
 
-- `mock_server_start(flow_ids=None, ignore_host=False, ignore_port=False, ignore_params=None, ignore_content=False, extra="forward")`
-- `mock_server_add_flows(flow_ids)`
-- `mock_server_stop()`
-- `mock_server_status()`
+- `mock_server_ctl(cmd="start", flow_ids=None, ignore_host=False, ignore_port=False, ignore_params=None, ignore_content=False, extra="forward")`
+- `mock_server_ctl(cmd="add", flow_ids=...)`
+- `mock_server_ctl(cmd="stop")`
+- `mock_server_ctl(cmd="status")`
 
-When active, matching incoming requests receive recorded responses without contacting the origin. This is different from `flow_replay`, which re-sends requests to the real server.
+When active, matching incoming requests receive recorded responses without contacting the origin. This is different from `flow_action(action="replay")`, which re-sends requests to the real server.
 
-The `store_id` field in `FlowModel` is the identifier LLMs should use with these tools (and with `flow_get`, `flow_update`, etc.).
+The `store_id` field in `FlowModel` is the identifier LLMs should use with these tools (and with `flow_ctl(cmd="get")`, `flow_action(action="update")`, etc.).
 
 ## Adding a new tool
 
@@ -187,6 +193,17 @@ uv run python -m mitmproxy_mcp
 uv pip install -e ".[dev]"
 ```
 
-### Utility tools
+### Composite tools
 
-- `clear_all(stop_proxy=False)` — clear all captured flows, automatic rules and capture rules in one call.
+| Tool | Commands |
+|------|----------|
+| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all` |
+| `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
+| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+| `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
+| `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+| `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+
+Use `proxy_ctl(cmd="clear_all", stop_proxy=False)` to clear all captured flows, automatic rules, capture rules and mappings in one call.

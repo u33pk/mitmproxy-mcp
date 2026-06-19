@@ -5,12 +5,12 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 ## Features
 
 - **Two capture modes**
-  - Start a live proxy via `proxy_start` and capture traffic in real time.
-  - Load a previously saved `.mitm` dump with `flows_load` for offline analysis.
+  - Start a live proxy via `proxy_ctl(cmd="start")` and capture traffic in real time.
+  - Load a previously saved `.mitm` dump with `flow_ctl(cmd="load")` for offline analysis.
 - **Core operations**
-  - **View**: `flows_list`, `flow_get`
-  - **Replay**: `flow_replay`, `request_send` — backed by mitmproxy's native `replay.client`
-  - **Modify**: `flow_update`, `flow_create`
+  - **View**: `flow_ctl(cmd="list")`, `flow_ctl(cmd="get")`
+  - **Replay**: `flow_action(action="replay")`, `flow_action(action="send")` — backed by mitmproxy's native `replay.client`
+  - **Modify**: `flow_action(action="update")`, `flow_action(action="create")`
 - **Built on mitmproxy's own engine** for replay and save, so we don't reinvent the wheel.
 - **stdio transport** for out-of-the-box Claude Desktop compatibility.
 - Uses mitmproxy's existing web UI (`mitmweb`) if you prefer a visual inspector.
@@ -48,15 +48,15 @@ A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json
 
 ## Quick start
 
-1. Configure your browser or client to use the proxy address shown by `proxy_status` (default `127.0.0.1:8080`).
-2. Ask the LLM to run `proxy_start`.
+1. Configure your browser or client to use the proxy address shown by `proxy_ctl(cmd="status")` (default `127.0.0.1:8080`).
+2. Ask the LLM to run `proxy_ctl(cmd="start")`.
 3. Browse or make API calls.
-4. Ask the LLM to run `flows_list` and `flow_get` to inspect traffic.
-5. Use `flow_replay` to resend a request, or `flow_update` + `flow_replay` to modify and resend.
+4. Ask the LLM to run `flow_ctl(cmd="list")` and `flow_ctl(cmd="get")` to inspect traffic.
+5. Use `flow_action(action="replay")` to resend a request, or `flow_action(action="update")` + `flow_action(action="replay")` to modify and resend.
 
 ### Advanced proxy options
 
-`proxy_start` accepts an `extra_options` dictionary that is passed straight to mitmproxy's `options.Options`. This lets the LLM enable SOCKS5, raw TCP/UDP capture, host filtering, etc.
+`proxy_ctl(cmd="start")` accepts an `extra_options` dictionary that is passed straight to mitmproxy's `options.Options`. This lets the LLM enable SOCKS5, raw TCP/UDP capture, host filtering, etc.
 
 ```json
 {
@@ -70,14 +70,15 @@ A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json
 }
 ```
 
-Use `proxy_list_options` to discover all available keys and their defaults.
+Use `proxy_ctl(cmd="list_options")` to discover all available keys and their defaults.
 
 ### Large responses and JSON extraction
 
-When inspecting flows with big bodies, use `flow_get` with `max_content_size` to avoid flooding the LLM context:
+When inspecting flows with big bodies, use `flow_ctl(cmd="get")` with `max_content_size` to avoid flooding the LLM context:
 
 ```json
 {
+  "cmd": "get",
   "flow_id": 1,
   "max_content_size": 4096
 }
@@ -86,13 +87,14 @@ When inspecting flows with big bodies, use `flow_get` with `max_content_size` to
 - JSON bodies return a compact **structure preview**.
 - Non-JSON text bodies are **truncated** with a note.
 
-To pull specific values from JSON request or response bodies, use `flow_extract_json` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
+To pull specific values from JSON request or response bodies, use `flow_ctl(cmd="extract_json")` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
 
 ```json
 {
+  "cmd": "extract_json",
   "flow_id": 1,
-  "content_type": "response",
-  "json_paths": ["$.data.users[*].name", "$.meta.total"]
+  "target": "response",
+  "jsonpath": ["$.data.users[*].name", "$.meta.total"]
 }
 ```
 
@@ -109,48 +111,16 @@ Install it in your browser or system keychain. See [mitmproxy docs](https://docs
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `proxy_start` | Start the capture proxy (`host`, `port`, `capture_filter`, `ssl_insecure`, `upstream_proxy`, `extra_options`) |
-| `proxy_stop` | Stop the capture proxy |
-| `proxy_status` | Show proxy state and number of captured flows |
-| `proxy_list_options` | List available mitmproxy-native options for `extra_options` |
-| `flows_load` | Load flows from a `.mitm` file |
-| `flows_save` | Save current flows to a `.mitm` file |
-| `flows_list` | List flows with filtering/pagination |
-| `flow_get` | Get a single flow's full details (optionally truncate/preview large bodies) |
-| `flow_extract_json` | Extract fields from JSON request/response content using JSONPath |
-| `flows_clear` | Clear in-memory flows; optionally stop proxy |
-| `flow_replay` | Replay a flow using mitmproxy's `replay.client` |
-| `flow_resume` | Resume an intercepted (breakpoint-paused) flow |
-| `flow_kill` | Kill a running or intercepted flow |
-| `request_send` | Send a new request using mitmproxy's `replay.client` |
-| `flow_update` | Modify a flow's request/response or metadata |
-| `flow_create` | Create a new request flow without sending |
-| `flow_delete` | Delete a flow from memory |
-| `rules_list` | List configured automatic rules |
-| `rule_add` | Add or replace an automatic rule |
-| `rule_update` | Update an automatic rule |
-| `rule_delete` | Delete an automatic rule |
-| `rules_clear` | Delete all automatic rules |
-| `clear_all` | Clear all flows, rules and capture rules at once |
-| `capture_rules_list` | List configured capture rules |
-| `capture_rule_add` | Add or replace a capture rule |
-| `capture_rule_update` | Update a capture rule |
-| `capture_rule_delete` | Delete a capture rule |
-| `capture_rules_clear` | Delete all capture rules |
-| `mock_server_start` | Start a mock server from captured flows |
-| `mock_server_add_flows` | Add more flows to the mock server |
-| `mock_server_stop` | Stop the mock server |
-| `mock_server_status` | Show the number of mocked flows |
-| `map_local_rules_list` | List map_local rules |
-| `map_local_rule_add` | Map a URL pattern to a local file/directory |
-| `map_local_rule_delete` | Delete a map_local rule |
-| `map_local_rules_clear` | Delete all map_local rules |
-| `map_remote_rules_list` | List map_remote rules |
-| `map_remote_rule_add` | Rewrite a URL pattern to another URL |
-| `map_remote_rule_delete` | Delete a map_remote rule |
-| `map_remote_rules_clear` | Delete all map_remote rules |
+| Tool | Commands / Description |
+|------|------------------------|
+| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all` |
+| `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
+| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
+| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |
+| `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
+| `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL → local file) |
+| `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL rewrite) |
 
 ## Automatic rules (breakpoints & modifications)
 
@@ -171,11 +141,11 @@ You can define rules that automatically match live traffic and apply actions. Th
 }
 ```
 
-Use `rule_add` to install the rule, `rules_list` to inspect it, and `rules_clear` to remove all rules.
+Use `rule_ctl(cmd="add", rule=...)` to install the rule, `rule_ctl(cmd="list")` to inspect it, and `rule_ctl(cmd="clear")` to remove all rules.
 
 Actions include: `set_header`, `remove_header`, `set_body`, `replace_body`, `set_status`, `set_path`, `set_method`, `delay`, `kill`, `intercept`, `resume`, `mark`, `comment`, `tag`.
 
-The `filter` field uses mitmproxy's flowfilter syntax (`~u`, `~m`, `~h`, `~t`, `~c`, etc.). Use `intercept` to pause a matched flow, then call `flow_resume` or `flow_kill` from the LLM.
+The `filter` field uses mitmproxy's flowfilter syntax (`~u`, `~m`, `~h`, `~t`, `~c`, etc.). Use `intercept` to pause a matched flow, then call `flow_action(action="resume", flow_id=...)` or `flow_action(action="kill", flow_id=...)` from the LLM.
 
 ## Capture rules
 
@@ -195,7 +165,7 @@ Logic:
 - If any `include` rules exist, the flow must match at least one to be captured.
 - The existing `capture_filter` option still applies as a base filter.
 
-Use `capture_rule_add` to add rules, `capture_rules_list` to inspect them, and `capture_rules_clear` to remove all.
+Use `capture_rule_ctl(cmd="add", rule=...)` to add rules, `capture_rule_ctl(cmd="list")` to inspect them, and `capture_rule_ctl(cmd="clear")` to remove all.
 
 ## Mock server (server-side playback)
 
@@ -208,16 +178,16 @@ Turn captured flows into a local mock server. Once started, matching requests re
 
 ```python
 # Conceptual usage from an LLM:
-mock_server_start(flow_ids=[1, 2, 3])
+mock_server_ctl(cmd="start", flow_ids=[1, 2, 3])
 # Now requests matching the recorded ones return recorded responses.
-mock_server_status()
-mock_server_stop()
+mock_server_ctl(cmd="status")
+mock_server_ctl(cmd="stop")
 ```
 
-This is different from `flow_replay`:
+This is different from `flow_action(action="replay")`:
 
-- `flow_replay` re-sends the request to the real server.
-- `mock_server_start` intercepts incoming requests and returns recorded responses.
+- `flow_action(action="replay")` re-sends the request to the real server.
+- `mock_server_ctl(cmd="start")` intercepts incoming requests and returns recorded responses.
 
 ## URL mappings
 
@@ -249,7 +219,7 @@ Rewrite matching URLs to another origin:
 }
 ```
 
-Use `map_local_rule_add` / `map_remote_rule_add` to add rules, `map_local_rules_list` / `map_remote_rules_list` to inspect them, and `*_rules_clear` to remove all.
+Use `map_local_ctl(cmd="add", rule=...)` / `map_remote_ctl(cmd="add", rule=...)` to add rules, `map_local_ctl(cmd="list")` / `map_remote_ctl(cmd="list")` to inspect them, and `*_ctl(cmd="clear")` to remove all.
 
 ## Playwright / browser automation
 

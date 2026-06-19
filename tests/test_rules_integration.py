@@ -20,17 +20,10 @@ import urllib.request
 import pytest
 
 from mitmproxy_mcp.server import (
-    capture_rule_add,
-    capture_rule_delete,
-    capture_rules_clear,
-    capture_rules_list,
-    flows_clear,
-    flows_list,
-    proxy_start,
-    proxy_status,
-    proxy_stop,
-    rule_add,
-    rules_clear,
+    capture_rule_ctl,
+    flow_ctl,
+    proxy_ctl,
+    rule_ctl,
 )
 from mitmproxy_mcp.proxy import CaptureRule
 from mitmproxy_mcp.rules import Action, Rule
@@ -40,18 +33,18 @@ from mitmproxy_mcp.rules import Action, Rule
 def _cleanup():
     """Ensure a clean state before and after each test."""
     try:
-        proxy_stop()
-        rules_clear()
-        capture_rules_clear()
-        flows_clear()
+        proxy_ctl(cmd="stop")
+        rule_ctl(cmd="clear")
+        capture_rule_ctl(cmd="clear")
+        flow_ctl(cmd="clear")
     except Exception:
         pass
     yield
     try:
-        rules_clear()
-        capture_rules_clear()
-        flows_clear()
-        proxy_stop()
+        rule_ctl(cmd="clear")
+        capture_rule_ctl(cmd="clear")
+        flow_ctl(cmd="clear")
+        proxy_ctl(cmd="stop")
     except Exception:
         pass
 
@@ -100,12 +93,13 @@ def test_automatic_rule_modifies_response() -> None:
 
     server = _start_http_server(server_port)
     try:
-        r = proxy_start(port=proxy_port)
+        r = proxy_ctl(cmd="start", port=proxy_port)
         assert r["success"] is True
-        assert proxy_status()["running"] is True
+        assert proxy_ctl(cmd="status")["running"] is True
 
-        r = rule_add(
-            Rule(
+        r = rule_ctl(
+            cmd="add",
+            rule=Rule(
                 id="modify-api",
                 filter=f"~u 127.0.0.1:{server_port}/api",
                 phase="response",
@@ -117,7 +111,7 @@ def test_automatic_rule_modifies_response() -> None:
                         value="true",
                     )
                 ],
-            )
+            ),
         )
         assert r["success"] is True
 
@@ -129,7 +123,7 @@ def test_automatic_rule_modifies_response() -> None:
 
         time.sleep(1)
 
-        flows = flows_list()["flows"]
+        flows = flow_ctl(cmd="list")["flows"]
         api_flows = [f for f in flows if f["request"]["path"] == "/api"]
         other_flows = [f for f in flows if f["request"]["path"] == "/other"]
 
@@ -153,16 +147,17 @@ def test_automatic_rule_blocks_request() -> None:
 
     server = _start_http_server(server_port)
     try:
-        r = proxy_start(port=proxy_port)
+        r = proxy_ctl(cmd="start", port=proxy_port)
         assert r["success"] is True
 
-        r = rule_add(
-            Rule(
+        r = rule_ctl(
+            cmd="add",
+            rule=Rule(
                 id="block-health",
                 filter=f"~u 127.0.0.1:{server_port}/health",
                 phase="request",
                 actions=[Action(type="kill")],
-            )
+            ),
         )
         assert r["success"] is True
 
@@ -177,7 +172,7 @@ def test_automatic_rule_blocks_request() -> None:
         assert status == 200
 
         time.sleep(1)
-        flows = flows_list()["flows"]
+        flows = flow_ctl(cmd="list")["flows"]
         root_flows = [f for f in flows if f["request"]["path"] == "/"]
         assert len(root_flows) >= 1
         assert root_flows[0]["response"]["status_code"] == 200
@@ -193,24 +188,26 @@ def test_capture_rules_include_exclude() -> None:
 
     server = _start_http_server(server_port)
     try:
-        r = proxy_start(port=proxy_port)
+        r = proxy_ctl(cmd="start", port=proxy_port)
         assert r["success"] is True
 
-        r = capture_rule_add(
-            CaptureRule(
+        r = capture_rule_ctl(
+            cmd="add",
+            rule=CaptureRule(
                 id="include-api",
                 filter=f"~u 127.0.0.1:{server_port}/api",
                 action="include",
-            )
+            ),
         )
         assert r["success"] is True
 
-        r = capture_rule_add(
-            CaptureRule(
+        r = capture_rule_ctl(
+            cmd="add",
+            rule=CaptureRule(
                 id="exclude-internal",
                 filter=f"~u 127.0.0.1:{server_port}/api/internal",
                 action="exclude",
-            )
+            ),
         )
         assert r["success"] is True
 
@@ -222,7 +219,7 @@ def test_capture_rules_include_exclude() -> None:
 
         time.sleep(1)
 
-        flows = flows_list()["flows"]
+        flows = flow_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
 
         assert "/api/users" in paths
@@ -240,39 +237,40 @@ def test_capture_rules_runtime_update() -> None:
 
     server = _start_http_server(server_port)
     try:
-        r = proxy_start(port=proxy_port)
+        r = proxy_ctl(cmd="start", port=proxy_port)
         assert r["success"] is True
 
         # First capture everything by adding no rules.
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page1", proxy_port)
         time.sleep(0.5)
-        assert flows_list()["total"] == 1
+        assert flow_ctl(cmd="list")["total"] == 1
 
         # Add an include rule that only captures /api.
-        capture_rule_add(
-            CaptureRule(
+        capture_rule_ctl(
+            cmd="add",
+            rule=CaptureRule(
                 id="api-only",
                 filter=f"~u 127.0.0.1:{server_port}/api",
                 action="include",
-            )
+            ),
         )
 
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page2", proxy_port)
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/api/data", proxy_port)
         time.sleep(0.5)
 
-        flows = flows_list()["flows"]
+        flows = flow_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
         assert "/page1" in paths
         assert "/page2" not in paths
         assert "/api/data" in paths
 
         # Delete the rule and verify capture returns to all.
-        capture_rule_delete("api-only")
+        capture_rule_ctl(cmd="delete", rule_id="api-only")
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page3", proxy_port)
         time.sleep(0.5)
 
-        flows = flows_list()["flows"]
+        flows = flow_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
         assert "/page3" in paths
     finally:
