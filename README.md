@@ -1,32 +1,32 @@
 # mitmproxy-mcp
 
-A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server built on [mitmproxy](https://mitmproxy.org/). It lets LLMs capture, inspect, replay and modify HTTP traffic through a small, focused set of tools.
+一个基于 [mitmproxy](https://mitmproxy.org/) 构建的轻量级 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 服务器。它让 LLM 可以通过一小套工具来捕获、检查、重放和修改 HTTP 流量。
 
-## Features
+## 特性
 
-- **Two capture modes**
-  - Start a live proxy via `proxy_ctl(cmd="start")` and capture traffic in real time.
-  - Load a previously saved `.mitm` dump with `flow_ctl(cmd="load")` for offline analysis.
-- **Core operations**
-  - **View**: `flow_ctl(cmd="list")`, `flow_ctl(cmd="get")`
-  - **Replay**: `flow_action(action="replay")`, `flow_action(action="send")` — backed by mitmproxy's native `replay.client`
-  - **Modify**: `flow_action(action="update")`, `flow_action(action="create")`
-- **Built on mitmproxy's own engine** for replay and save, so we don't reinvent the wheel.
-- **stdio transport** for out-of-the-box Claude Desktop compatibility.
-- Uses mitmproxy's existing web UI (`mitmweb`) if you prefer a visual inspector.
+- **两种捕获模式**
+  - 通过 `proxy_ctl(cmd="start")` 启动实时代理，实时捕获流量。
+  - 通过 `flow_ctl(cmd="load")` 加载之前保存的 `.mitm` 文件进行离线分析。
+- **核心操作**
+  - **查看**: `flow_ctl(cmd="list")`, `flow_ctl(cmd="get")`
+  - **重放**: `flow_action(action="replay")`, `flow_action(action="send")` —— 基于 mitmproxy 原生 `replay.client`
+  - **修改**: `flow_action(action="update")`, `flow_action(action="create")`
+- **基于 mitmproxy 自身引擎** 实现重放和保存，不重复造轮子。
+- **stdio 传输**，开箱兼容 Claude Desktop。
+- 如需可视化界面，可直接使用 mitmproxy 自带的 Web UI（`mitmweb`）。
 
-## Install
+## 安装
 
-Requires Python 3.13+ and `uv`.
+需要 Python 3.13+ 和 `uv`。
 
 ```bash
 uv venv
 uv pip install -e .
 ```
 
-## Claude Desktop configuration
+## Claude Desktop 配置
 
-Add this to your Claude Desktop config (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows/Linux paths may differ):
+将以下内容添加到你的 Claude Desktop 配置中（macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows/Linux 路径可能不同）：
 
 ```json
 {
@@ -44,19 +44,19 @@ Add this to your Claude Desktop config (macOS: `~/Library/Application Support/Cl
 }
 ```
 
-A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json).
+示例配置也可参考 [`examples/mcp-config.json`](examples/mcp-config.json)。
 
-## Quick start
+## 快速开始
 
-1. Configure your browser or client to use the proxy address shown by `proxy_ctl(cmd="status")` (default `127.0.0.1:8080`).
-2. Ask the LLM to run `proxy_ctl(cmd="start")`.
-3. Browse or make API calls.
-4. Ask the LLM to run `flow_ctl(cmd="list")` and `flow_ctl(cmd="get")` to inspect traffic.
-5. Use `flow_action(action="replay")` to resend a request, or `flow_action(action="update")` + `flow_action(action="replay")` to modify and resend.
+1. 将浏览器或客户端配置为使用 `proxy_ctl(cmd="status")` 显示的代理地址（默认 `127.0.0.1:8080`）。
+2. 让 LLM 执行 `proxy_ctl(cmd="start")`。
+3. 浏览网页或调用 API。
+4. 让 LLM 执行 `flow_ctl(cmd="list")` 和 `flow_ctl(cmd="get")` 检查流量。
+5. 使用 `flow_action(action="replay")` 重发请求，或用 `flow_action(action="update")` + `flow_action(action="replay")` 修改后重发。
 
-### Advanced proxy options
+### 高级代理选项
 
-`proxy_ctl(cmd="start")` accepts an `extra_options` dictionary that is passed straight to mitmproxy's `options.Options`. This lets the LLM enable SOCKS5, raw TCP/UDP capture, host filtering, etc.
+`proxy_ctl(cmd="start")` 接受 `extra_options` 字典，直接透传给 mitmproxy 的 `options.Options`。这样 LLM 可以启用 SOCKS5、原始 TCP/UDP 捕获、主机过滤等。
 
 ```json
 {
@@ -70,11 +70,11 @@ A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json
 }
 ```
 
-Use `proxy_ctl(cmd="list_options")` to discover all available keys and their defaults.
+使用 `proxy_ctl(cmd="list_options")` 查看所有可用键及其默认值。
 
-### Large responses and JSON extraction
+### 大响应与 JSON 提取
 
-When inspecting flows with big bodies, use `flow_ctl(cmd="get")` with `max_content_size` to avoid flooding the LLM context:
+检查大体积响应体时，使用 `flow_ctl(cmd="get")` 的 `max_content_size` 避免占满 LLM 上下文：
 
 ```json
 {
@@ -84,10 +84,10 @@ When inspecting flows with big bodies, use `flow_ctl(cmd="get")` with `max_conte
 }
 ```
 
-- JSON bodies return a compact **structure preview**.
-- Non-JSON text bodies are **truncated** with a note.
+- JSON 体会返回紧凑的 **结构预览**。
+- 非 JSON 文本体会 **截断** 并附加提示。
 
-To pull specific values from JSON request or response bodies, use `flow_ctl(cmd="extract_json")` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
+要从 JSON 请求或响应体中提取特定值，使用 `flow_ctl(cmd="extract_json")` 配合 [JSONPath](https://goessner.net/articles/JsonPath/) 表达式：
 
 ```json
 {
@@ -98,20 +98,20 @@ To pull specific values from JSON request or response bodies, use `flow_ctl(cmd=
 }
 ```
 
-### HTTPS traffic
+### HTTPS 流量
 
-For HTTPS interception you must trust the mitmproxy CA certificate:
+拦截 HTTPS 需要信任 mitmproxy 的 CA 证书：
 
 ```bash
-# Certificate location
+# 证书位置
 ~/.mitmproxy/mitmproxy-ca-cert.cer
 ```
 
-Install it in your browser or system keychain. See [mitmproxy docs](https://docs.mitmproxy.org/stable/concepts-certificates/) for details.
+将其安装到浏览器或系统钥匙串。详见 [mitmproxy 文档](https://docs.mitmproxy.org/stable/concepts-certificates/)。
 
-### WebSocket traffic
+### WebSocket 流量
 
-WebSocket connections are captured as HTTP upgrade flows. After a client connects through the proxy, use the `websocket_only` filter to list WebSocket flows:
+WebSocket 连接以 HTTP upgrade 流的形式被捕获。客户端通过代理连接后，使用 `websocket_only` 过滤列出 WebSocket 流：
 
 ```json
 {
@@ -120,7 +120,7 @@ WebSocket connections are captured as HTTP upgrade flows. After a client connect
 }
 ```
 
-Then call `flow_ctl(cmd="get", flow_id=...)` to see the full conversation:
+然后调用 `flow_ctl(cmd="get", flow_id=...)` 查看完整会话：
 
 ```json
 {
@@ -135,31 +135,31 @@ Then call `flow_ctl(cmd="get", flow_id=...)` to see the full conversation:
 }
 ```
 
-Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_content_size` on `flow_ctl(cmd="get")` to avoid large message payloads.
+二进制消息会 base64 编码（`content_encoding="base64"`）。在 `flow_ctl(cmd="get")` 上使用 `max_content_size` 避免大消息载荷。
 
-## Tools
+## 工具
 
-| Tool | Commands / Description |
-|------|------------------------|
+| 工具 | 命令 / 说明 |
+|------|------------|
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
-| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
-| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |
+| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
+| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（捕获 include/exclude 规则） |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
-| `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL → local file) |
-| `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL rewrite) |
-| `tool_info(tool_name, cmd=None)` | Progressive documentation for any tool/command |
+| `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（URL → 本地文件） |
+| `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（URL 重写） |
+| `tool_info(tool_name, cmd=None)` | 任何工具/命令的渐进式文档 |
 
-Use `tool_info` to get detailed parameter descriptions and examples without bloating the static tool list. For example:
+使用 `tool_info` 获取详细的参数说明和示例，而不必让静态工具列表变得臃肿。例如：
 
 ```json
 {"tool_name": "proxy_ctl", "cmd": "start"}
 ```
 
-## Automatic rules (breakpoints & modifications)
+## 自动规则（断点与修改）
 
-You can define rules that automatically match live traffic and apply actions. This is useful for mocking responses, injecting headers, blocking ads, or pausing requests for later inspection.
+你可以定义自动匹配实时流量并执行操作的规则。适用于模拟响应、注入请求头、拦截广告或暂停请求以便后续检查。
 
 ```json
 {
@@ -176,15 +176,15 @@ You can define rules that automatically match live traffic and apply actions. Th
 }
 ```
 
-Use `rule_ctl(cmd="add", rule=...)` to install the rule, `rule_ctl(cmd="list")` to inspect it, and `rule_ctl(cmd="clear")` to remove all rules.
+使用 `rule_ctl(cmd="add", rule=...)` 安装规则，`rule_ctl(cmd="list")` 查看，`rule_ctl(cmd="clear")` 移除全部规则。
 
-Actions include: `set_header`, `remove_header`, `set_body`, `replace_body`, `set_status`, `set_path`, `set_method`, `delay`, `kill`, `intercept`, `resume`, `mark`, `comment`, `tag`.
+支持的操作包括：`set_header`, `remove_header`, `set_body`, `replace_body`, `set_status`, `set_path`, `set_method`, `delay`, `kill`, `intercept`, `resume`, `mark`, `comment`, `tag`。
 
-The `filter` field uses mitmproxy's flowfilter syntax (`~u`, `~m`, `~h`, `~t`, `~c`, etc.). Use `intercept` to pause a matched flow, then call `flow_action(action="resume", flow_id=...)` or `flow_action(action="kill", flow_id=...)` from the LLM.
+`filter` 字段使用 mitmproxy 的 flowfilter 语法（`~u`, `~m`, `~h`, `~t`, `~c` 等）。使用 `intercept` 暂停匹配的流，然后由 LLM 调用 `flow_action(action="resume", flow_id=...)` 或 `flow_action(action="kill", flow_id=...)`。
 
-## Capture rules
+## 捕获规则
 
-Capture rules control which live flows are saved to memory. They support `include` and `exclude` actions and can be changed at runtime without restarting the proxy.
+捕获规则决定哪些实时流量会被保存到内存。支持 `include` 和 `exclude` 操作，且可在代理运行时动态修改而无需重启。
 
 ```json
 [
@@ -194,43 +194,43 @@ Capture rules control which live flows are saved to memory. They support `includ
 ]
 ```
 
-Logic:
+逻辑：
 
-- `exclude` rules are checked first; any match drops the flow.
-- If any `include` rules exist, the flow must match at least one to be captured.
-- The existing `capture_filter` option still applies as a base filter.
+- `exclude` 规则优先检查；任意匹配则丢弃该流。
+- 如果存在任意 `include` 规则，则流必须至少匹配其中一个才会被捕获。
+- 基础的 `capture_filter` 选项仍会作为前置过滤。
 
-Use `capture_rule_ctl(cmd="add", rule=...)` to add rules, `capture_rule_ctl(cmd="list")` to inspect them, and `capture_rule_ctl(cmd="clear")` to remove all.
+使用 `capture_rule_ctl(cmd="add", rule=...)` 添加规则，`capture_rule_ctl(cmd="list")` 查看，`capture_rule_ctl(cmd="clear")` 移除全部。
 
-## Mock server (server-side playback)
+## Mock 服务器（服务端回放）
 
-Turn captured flows into a local mock server. Once started, matching requests receive the recorded response directly without contacting the real server.
+将捕获到的流变成本地 Mock 服务器。启动后，匹配请求会直接返回录制响应，无需访问真实服务器。
 
 ```bash
-# 1. Start the proxy and capture some real traffic
-# 2. Use mock_server_start to replay the captured flows
+# 1. 启动代理并捕获一些真实流量
+# 2. 使用 mock_server_start 回放已捕获的流
 ```
 
 ```python
-# Conceptual usage from an LLM:
+# LLM 的概念用法：
 mock_server_ctl(cmd="start", flow_ids=[1, 2, 3])
-# Now requests matching the recorded ones return recorded responses.
+# 现在匹配录制请求的访问会返回录制响应。
 mock_server_ctl(cmd="status")
 mock_server_ctl(cmd="stop")
 ```
 
-This is different from `flow_action(action="replay")`:
+这与 `flow_action(action="replay")` 不同：
 
-- `flow_action(action="replay")` re-sends the request to the real server.
-- `mock_server_ctl(cmd="start")` intercepts incoming requests and returns recorded responses.
+- `flow_action(action="replay")` 会向真实服务器重新发送请求。
+- `mock_server_ctl(cmd="start")` 会拦截入站请求并返回录制响应。
 
-## URL mappings
+## URL 映射
 
-Map requests to local files or rewrite URLs before forwarding.
+将请求映射到本地文件，或在转发前重写 URL。
 
 ### map_local
 
-Serve local files for matching URLs:
+为匹配 URL 提供本地文件：
 
 ```json
 {
@@ -243,7 +243,7 @@ Serve local files for matching URLs:
 
 ### map_remote
 
-Rewrite matching URLs to another origin:
+将匹配 URL 重写为另一个源站：
 
 ```json
 {
@@ -254,11 +254,11 @@ Rewrite matching URLs to another origin:
 }
 ```
 
-Use `map_local_ctl(cmd="add", rule=...)` / `map_remote_ctl(cmd="add", rule=...)` to add rules, `map_local_ctl(cmd="list")` / `map_remote_ctl(cmd="list")` to inspect them, and `*_ctl(cmd="clear")` to remove all.
+使用 `map_local_ctl(cmd="add", rule=...)` / `map_remote_ctl(cmd="add", rule=...)` 添加规则，`map_local_ctl(cmd="list")` / `map_remote_ctl(cmd="list")` 查看，`*_ctl(cmd="clear")` 移除全部。
 
-## Playwright / browser automation
+## Playwright / 浏览器自动化
 
-You can point Playwright at the mitmproxy-mcp proxy to capture browser traffic:
+你可以将 Playwright 指向 mitmproxy-mcp 代理来捕获浏览器流量：
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -273,9 +273,9 @@ with sync_playwright() as p:
     page.goto("https://example.com")
 ```
 
-Then ask the LLM to run `flows_list` and inspect the captured requests.
+然后让 LLM 执行 `flows_list` 并检查捕获的请求。
 
-A complete integration test is in [`tests/test_playwright_capture.py`](tests/test_playwright_capture.py). Run it with:
+完整集成测试见 [`tests/test_playwright_capture.py`](tests/test_playwright_capture.py)。运行方式：
 
 ```bash
 uv pip install -e ".[dev]"
@@ -283,30 +283,30 @@ playwright install chromium
 python -m pytest tests/test_playwright_capture.py -m integration -v
 ```
 
-## Development
+## 开发
 
-Run the server manually for testing:
+手动运行服务器进行测试：
 
 ```bash
 uv run mitmproxy-mcp
 ```
 
-Run unit tests (excludes network/browser integration tests):
+运行单元测试（排除网络/浏览器集成测试）：
 
 ```bash
 uv run pytest tests/ -q
 ```
 
-Run integration tests:
+运行集成测试：
 
 ```bash
-# Playwright browser capture test
+# Playwright 浏览器捕获测试
 uv run pytest tests/test_playwright_capture.py -m integration -v
 
-# All MCP tools end-to-end test
+# 所有 MCP 工具端到端测试
 uv run pytest tests/test_all_tools.py -m integration -v
 ```
 
-## License
+## 许可证
 
 MIT
