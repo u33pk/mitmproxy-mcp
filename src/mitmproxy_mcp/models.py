@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Literal
+from typing import Any, Literal
 
 from mitmproxy import http
 from pydantic import BaseModel, Field
@@ -50,6 +50,7 @@ class FlowModel(BaseModel):
     comment: str | None = None
     marked: bool = False
     tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def _encode_content(data: bytes | None) -> tuple[str | None, Literal["text", "base64"]]:
@@ -131,6 +132,7 @@ def flow_to_model(flow: http.HTTPFlow) -> FlowModel:
         comment=flow.comment or None,
         marked=bool(flow.marked),
         tags=list(flow.metadata.get("tags", [])) if flow.metadata else [],
+        metadata=dict(flow.metadata) if flow.metadata else {},
     )
 
 

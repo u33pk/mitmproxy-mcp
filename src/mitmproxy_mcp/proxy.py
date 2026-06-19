@@ -5,44 +5,163 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import Any
+from typing import Any, Literal
 
 from mitmproxy import flowfilter
 from mitmproxy import http
 from mitmproxy import options
 from mitmproxy.addonmanager import Loader
 from mitmproxy.tools.dump import DumpMaster
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
+from mitmproxy_mcp.rules import Rule, RulesAddon
 from mitmproxy_mcp.store import FlowStore
 
 logger = logging.getLogger(__name__)
 
 
+class CaptureRule(BaseModel):
+    """A rule that decides whether a flow should be captured."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., min_length=1)
+    name: str = ""
+    enabled: bool = True
+    filter: str = Field(..., min_length=1)
+    action: Literal["include", "exclude"]
+
+    _compiled_filter: flowfilter.TFilter | None = PrivateAttr(default=None)
+
+    def model_post_init(self, __context: Any) -> None:
+        try:
+            self._compiled_filter = flowfilter.parse(self.filter)
+        except ValueError as e:
+            raise ValueError(f"Invalid filter expression '{self.filter}': {e}") from e
+
+    def matches(self, flow: http.HTTPFlow) -> bool:
+        if not self.enabled or self._compiled_filter is None:
+            return False
+        try:
+            return bool(self._compiled_filter(flow))
+        except Exception as e:
+            logger.warning(f"Capture rule '{self.id}' filter evaluation failed: {e}")
+            return False
+
+
 class CaptureAddon:
     """An addon that captures HTTP flows into a FlowStore."""
 
-    def __init__(self, store: FlowStore, capture_filter: str | None = None) -> None:
+    def __init__(
+        self,
+        store: FlowStore,
+        capture_filter: str | None = None,
+        capture_rules: list[CaptureRule] | None = None,
+    ) -> None:
         self.store = store
         self.capture_filter = capture_filter
         self._filter: flowfilter.TFilter | None = None
+        self._lock = threading.RLock()
+        self._capture_rules: list[CaptureRule] = []
+        self._compile_filter()
+        if capture_rules:
+            self.set_rules(capture_rules)
 
     def load(self, loader: Loader) -> None:
+        self._compile_filter()
+
+    def _compile_filter(self) -> None:
         if self.capture_filter:
             try:
                 self._filter = flowfilter.parse(self.capture_filter)
             except ValueError as e:
                 logger.warning(f"Invalid capture filter '{self.capture_filter}': {e}")
+        else:
+            self._filter = None
+
+    def set_capture_filter(self, capture_filter: str | None) -> None:
+        """Update the base capture filter at runtime."""
+        self.capture_filter = capture_filter
+        self._compile_filter()
+
+    # ------------------------------------------------------------------
+    # Rule management (called from the MCP tool thread)
+    # ------------------------------------------------------------------
+
+    def list_rules(self) -> list[CaptureRule]:
+        with self._lock:
+            return list(self._capture_rules)
+
+    def set_rules(self, rules: list[CaptureRule]) -> None:
+        with self._lock:
+            self._capture_rules = list(rules)
+
+    def add_rule(self, rule: CaptureRule) -> None:
+        with self._lock:
+            self._capture_rules = [r for r in self._capture_rules if r.id != rule.id]
+            self._capture_rules.append(rule)
+
+    def update_rule(self, rule_id: str, updates: dict[str, Any]) -> CaptureRule | None:
+        with self._lock:
+            for idx, existing in enumerate(self._capture_rules):
+                if existing.id == rule_id:
+                    data = existing.model_dump()
+                    data.update(updates)
+                    new_rule = CaptureRule(**data)
+                    self._capture_rules[idx] = new_rule
+                    return new_rule
+        return None
+
+    def delete_rule(self, rule_id: str) -> bool:
+        with self._lock:
+            before = len(self._capture_rules)
+            self._capture_rules = [r for r in self._capture_rules if r.id != rule_id]
+            return len(self._capture_rules) < before
+
+    def clear_rules(self) -> int:
+        with self._lock:
+            count = len(self._capture_rules)
+            self._capture_rules.clear()
+            return count
+
+    # ------------------------------------------------------------------
+    # Capture decision
+    # ------------------------------------------------------------------
+
+    def should_capture(self, flow: http.HTTPFlow) -> bool:
+        with self._lock:
+            base_filter = self._filter
+            rules = list(self._capture_rules)
+
+        if base_filter is not None and not base_filter(flow):
+            return False
+
+        if not rules:
+            return True
+
+        include_rules = [r for r in rules if r.action == "include" and r.enabled]
+        exclude_rules = [r for r in rules if r.action == "exclude" and r.enabled]
+
+        for rule in exclude_rules:
+            if rule.matches(flow):
+                return False
+
+        if include_rules:
+            for rule in include_rules:
+                if rule.matches(flow):
+                    return True
+            return False
+
+        return True
 
     def response(self, flow: http.HTTPFlow) -> None:
-        if self._filter is not None and not self._filter(flow):
-            return
-        self.store.add(flow)
+        if self.should_capture(flow):
+            self.store.add(flow)
 
     def error(self, flow: http.HTTPFlow) -> None:
         # Also capture failed flows so errors are visible.
-        if self._filter is not None and not self._filter(flow):
-            return
-        self.store.add(flow)
+        if self.should_capture(flow):
+            self.store.add(flow)
 
 
 class ProxyManager:
@@ -56,6 +175,8 @@ class ProxyManager:
         self._ready = threading.Event()
         self._lock = threading.RLock()
         self._options: dict[str, Any] = {}
+        self.capture_addon = CaptureAddon(self.store)
+        self.rules_addon = RulesAddon()
 
     def _run_proxy(
         self,
@@ -64,6 +185,7 @@ class ProxyManager:
         capture_filter: str | None,
         ssl_insecure: bool,
         upstream_proxy: str | None,
+        extra_options: dict[str, Any] | None,
     ) -> None:
         """Thread target that creates and runs the mitmproxy event loop."""
         self._loop = asyncio.new_event_loop()
@@ -76,12 +198,16 @@ class ProxyManager:
         }
         if upstream_proxy:
             opts_kwargs["mode"] = [f"upstream:{upstream_proxy}"]
+        if extra_options:
+            opts_kwargs.update(extra_options)
         opts = options.Options(**opts_kwargs)
 
         async def _setup() -> DumpMaster:
             # DumpMaster needs a running event loop during construction.
             master = DumpMaster(opts, with_termlog=False, with_dumper=False)
-            master.addons.add(CaptureAddon(self.store, capture_filter))
+            self.capture_addon.set_capture_filter(capture_filter)
+            master.addons.add(self.capture_addon)
+            master.addons.add(self.rules_addon)
             return master
 
         # with_termlog=False and with_dumper=False keep stdout clean for stdio MCP.
@@ -117,6 +243,7 @@ class ProxyManager:
         capture_filter: str | None = None,
         ssl_insecure: bool = False,
         upstream_proxy: str | None = None,
+        extra_options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Start mitmproxy in a background thread."""
         with self._lock:
@@ -129,7 +256,7 @@ class ProxyManager:
             self._ready.clear()
             self._thread = threading.Thread(
                 target=self._run_proxy,
-                args=(host, port, capture_filter, ssl_insecure, upstream_proxy),
+                args=(host, port, capture_filter, ssl_insecure, upstream_proxy, extra_options),
                 daemon=True,
             )
             self._thread.start()
@@ -146,15 +273,79 @@ class ProxyManager:
                 "capture_filter": capture_filter,
                 "ssl_insecure": ssl_insecure,
                 "upstream_proxy": upstream_proxy,
+                "extra_options": extra_options,
             }
 
         logger.info(f"mitmproxy started on {host}:{port}")
-        return {
+        result: dict[str, Any] = {
             "success": True,
             "host": host,
             "port": port,
             "capture_filter": capture_filter,
         }
+        if extra_options:
+            result["extra_options"] = extra_options
+        return result
+
+    def list_rules(self) -> list[Rule]:
+        """Return the currently configured automatic rules."""
+        return self.rules_addon.list_rules()
+
+    def add_rule(self, rule: Rule) -> None:
+        """Add or replace an automatic rule."""
+        self.rules_addon.add_rule(rule)
+
+    def update_rule(self, rule_id: str, updates: dict[str, Any]) -> Rule | None:
+        """Update an existing automatic rule by id."""
+        return self.rules_addon.update_rule(rule_id, updates)
+
+    def delete_rule(self, rule_id: str) -> bool:
+        """Delete an automatic rule by id."""
+        return self.rules_addon.delete_rule(rule_id)
+
+    def clear_rules(self) -> int:
+        """Delete all automatic rules."""
+        return self.rules_addon.clear_rules()
+
+    def list_capture_rules(self) -> list[CaptureRule]:
+        """Return the currently configured capture rules."""
+        return self.capture_addon.list_rules()
+
+    def add_capture_rule(self, rule: CaptureRule) -> None:
+        """Add or replace a capture rule."""
+        self.capture_addon.add_rule(rule)
+
+    def update_capture_rule(
+        self, rule_id: str, updates: dict[str, Any]
+    ) -> CaptureRule | None:
+        """Update an existing capture rule by id."""
+        return self.capture_addon.update_rule(rule_id, updates)
+
+    def delete_capture_rule(self, rule_id: str) -> bool:
+        """Delete a capture rule by id."""
+        return self.capture_addon.delete_rule(rule_id)
+
+    def clear_capture_rules(self) -> int:
+        """Delete all capture rules."""
+        return self.capture_addon.clear_rules()
+
+    def clear_all(self, stop_proxy: bool = False) -> dict[str, Any]:
+        """Clear all flows, automatic rules and capture rules.
+
+        If ``stop_proxy`` is True, also stop the running proxy.
+        """
+        cleared_flows = self.store.clear()
+        cleared_rules = self.rules_addon.clear_rules()
+        cleared_capture_rules = self.capture_addon.clear_rules()
+        result: dict[str, Any] = {
+            "success": True,
+            "cleared_flows": cleared_flows,
+            "cleared_rules": cleared_rules,
+            "cleared_capture_rules": cleared_capture_rules,
+        }
+        if stop_proxy:
+            result["proxy_stopped"] = self.stop()["success"]
+        return result
 
     def call(self, command_name: str, *args: Any, timeout: float = 30) -> Any:
         """Thread-safely call a mitmproxy command in its event loop."""

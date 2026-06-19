@@ -54,6 +54,48 @@ A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json
 4. Ask the LLM to run `flows_list` and `flow_get` to inspect traffic.
 5. Use `flow_replay` to resend a request, or `flow_update` + `flow_replay` to modify and resend.
 
+### Advanced proxy options
+
+`proxy_start` accepts an `extra_options` dictionary that is passed straight to mitmproxy's `options.Options`. This lets the LLM enable SOCKS5, raw TCP/UDP capture, host filtering, etc.
+
+```json
+{
+  "host": "127.0.0.1",
+  "port": 8080,
+  "extra_options": {
+    "mode": ["socks5"],
+    "tcp_hosts": ["example.com"],
+    "udp_hosts": ["dns.example.com"]
+  }
+}
+```
+
+Use `proxy_list_options` to discover all available keys and their defaults.
+
+### Large responses and JSON extraction
+
+When inspecting flows with big bodies, use `flow_get` with `max_content_size` to avoid flooding the LLM context:
+
+```json
+{
+  "flow_id": 1,
+  "max_content_size": 4096
+}
+```
+
+- JSON bodies return a compact **structure preview**.
+- Non-JSON text bodies are **truncated** with a note.
+
+To pull specific values from JSON request or response bodies, use `flow_extract_json` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
+
+```json
+{
+  "flow_id": 1,
+  "content_type": "response",
+  "json_paths": ["$.data.users[*].name", "$.meta.total"]
+}
+```
+
 ### HTTPS traffic
 
 For HTTPS interception you must trust the mitmproxy CA certificate:
@@ -69,19 +111,79 @@ Install it in your browser or system keychain. See [mitmproxy docs](https://docs
 
 | Tool | Description |
 |------|-------------|
-| `proxy_start` | Start the capture proxy (`host`, `port`, `capture_filter`, `ssl_insecure`, `upstream_proxy`) |
+| `proxy_start` | Start the capture proxy (`host`, `port`, `capture_filter`, `ssl_insecure`, `upstream_proxy`, `extra_options`) |
 | `proxy_stop` | Stop the capture proxy |
 | `proxy_status` | Show proxy state and number of captured flows |
+| `proxy_list_options` | List available mitmproxy-native options for `extra_options` |
 | `flows_load` | Load flows from a `.mitm` file |
 | `flows_save` | Save current flows to a `.mitm` file |
 | `flows_list` | List flows with filtering/pagination |
-| `flow_get` | Get a single flow's full details |
+| `flow_get` | Get a single flow's full details (optionally truncate/preview large bodies) |
+| `flow_extract_json` | Extract fields from JSON request/response content using JSONPath |
 | `flows_clear` | Clear in-memory flows; optionally stop proxy |
 | `flow_replay` | Replay a flow using mitmproxy's `replay.client` |
+| `flow_resume` | Resume an intercepted (breakpoint-paused) flow |
+| `flow_kill` | Kill a running or intercepted flow |
 | `request_send` | Send a new request using mitmproxy's `replay.client` |
 | `flow_update` | Modify a flow's request/response or metadata |
 | `flow_create` | Create a new request flow without sending |
 | `flow_delete` | Delete a flow from memory |
+| `rules_list` | List configured automatic rules |
+| `rule_add` | Add or replace an automatic rule |
+| `rule_update` | Update an automatic rule |
+| `rule_delete` | Delete an automatic rule |
+| `rules_clear` | Delete all automatic rules |
+| `clear_all` | Clear all flows, rules and capture rules at once |
+| `capture_rules_list` | List configured capture rules |
+| `capture_rule_add` | Add or replace a capture rule |
+| `capture_rule_update` | Update a capture rule |
+| `capture_rule_delete` | Delete a capture rule |
+| `capture_rules_clear` | Delete all capture rules |
+
+## Automatic rules (breakpoints & modifications)
+
+You can define rules that automatically match live traffic and apply actions. This is useful for mocking responses, injecting headers, blocking ads, or pausing requests for later inspection.
+
+```json
+{
+  "id": "mock-api",
+  "name": "Mock example API",
+  "enabled": true,
+  "phase": "request",
+  "filter": "~u api.example.com/users",
+  "actions": [
+    {"type": "set_status", "status_code": 200},
+    {"type": "set_header", "target": "response", "name": "Content-Type", "value": "application/json"},
+    {"type": "set_body", "target": "response", "content": "{\"users\":[]}"}
+  ]
+}
+```
+
+Use `rule_add` to install the rule, `rules_list` to inspect it, and `rules_clear` to remove all rules.
+
+Actions include: `set_header`, `remove_header`, `set_body`, `replace_body`, `set_status`, `set_path`, `set_method`, `delay`, `kill`, `intercept`, `resume`, `mark`, `comment`, `tag`.
+
+The `filter` field uses mitmproxy's flowfilter syntax (`~u`, `~m`, `~h`, `~t`, `~c`, etc.). Use `intercept` to pause a matched flow, then call `flow_resume` or `flow_kill` from the LLM.
+
+## Capture rules
+
+Capture rules control which live flows are saved to memory. They support `include` and `exclude` actions and can be changed at runtime without restarting the proxy.
+
+```json
+[
+  {"id": "api-only", "filter": "~u api.example.com", "action": "include"},
+  {"id": "skip-health", "filter": "~u api.example.com/health", "action": "exclude"},
+  {"id": "skip-images", "filter": "~t image/*", "action": "exclude"}
+]
+```
+
+Logic:
+
+- `exclude` rules are checked first; any match drops the flow.
+- If any `include` rules exist, the flow must match at least one to be captured.
+- The existing `capture_filter` option still applies as a base filter.
+
+Use `capture_rule_add` to add rules, `capture_rules_list` to inspect them, and `capture_rules_clear` to remove all.
 
 ## Playwright / browser automation
 

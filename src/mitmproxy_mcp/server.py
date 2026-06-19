@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mitmproxy import http
+from mitmproxy import options as mitmproxy_options
 
+from mitmproxy_mcp.json_tools import extract_with_jsonpath, maybe_preview_content
 from mitmproxy_mcp.models import (
     Header,
     ResponseModel,
@@ -16,7 +19,8 @@ from mitmproxy_mcp.models import (
     update_request_from_model,
     update_response_from_model,
 )
-from mitmproxy_mcp.proxy import ProxyManager
+from mitmproxy_mcp.proxy import CaptureRule, ProxyManager
+from mitmproxy_mcp.rules import Rule
 from mitmproxy_mcp.store import FlowStore
 from mitmproxy_mcp.utils import create_http_flow, decode_body, replay_flows, save_flows
 
@@ -51,14 +55,22 @@ def proxy_start(
     capture_filter: str | None = None,
     ssl_insecure: bool = False,
     upstream_proxy: str | None = None,
+    extra_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Start the mitmproxy capture proxy."""
+    """Start the mitmproxy capture proxy.
+
+    extra_options can be used to pass any mitmproxy-native option to
+    options.Options, for example {"mode": ["socks5"]} or
+    {"tcp_hosts": ["example.com"]}. Use proxy_list_options to discover
+    available keys and their defaults.
+    """
     return proxy_manager.start(
         host=host,
         port=port,
         capture_filter=capture_filter,
         ssl_insecure=ssl_insecure,
         upstream_proxy=upstream_proxy,
+        extra_options=extra_options,
     )
 
 
@@ -72,6 +84,152 @@ def proxy_stop() -> dict[str, Any]:
 def proxy_status() -> dict[str, Any]:
     """Get the current proxy status and number of captured flows."""
     return proxy_manager.status()
+
+
+@mcp.tool()
+def proxy_list_options() -> dict[str, Any]:
+    """List available mitmproxy options that can be passed via extra_options."""
+    opts = mitmproxy_options.Options()
+    result: dict[str, Any] = {}
+    for name, opt in opts._options.items():
+        result[name] = {
+            "default": opt.default,
+            "type": str(opt.typespec),
+            "help": opt.help,
+        }
+    return {"options": result}
+
+
+# ---------------------------------------------------------------------------
+# Automatic rule tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def rules_list() -> dict[str, Any]:
+    """List all configured automatic rules."""
+    try:
+        rules = proxy_manager.list_rules()
+        return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def rule_add(rule: Rule) -> dict[str, Any]:
+    """Add or replace an automatic rule.
+
+    Rules match live HTTP flows by a mitmproxy flowfilter expression and apply
+    a list of actions automatically. Use rules_list to see examples after
+    adding a rule.
+    """
+    try:
+        proxy_manager.add_rule(rule)
+        return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def rule_update(rule_id: str, rule: Rule) -> dict[str, Any]:
+    """Replace an existing automatic rule by id."""
+    try:
+        if rule_id != rule.id:
+            # If the id changed, delete the old one and add the new one.
+            proxy_manager.delete_rule(rule_id)
+            proxy_manager.add_rule(rule)
+            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+        updated = proxy_manager.update_rule(rule_id, rule.model_dump(exclude_none=True))
+        if updated is None:
+            return {"success": False, "error": f"Rule with id {rule_id} not found"}
+        return {"success": True, "rule": updated.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def rule_delete(rule_id: str) -> dict[str, Any]:
+    """Delete an automatic rule by id."""
+    if proxy_manager.delete_rule(rule_id):
+        return {"success": True}
+    return {"success": False, "error": f"Rule with id {rule_id} not found"}
+
+
+@mcp.tool()
+def rules_clear() -> dict[str, Any]:
+    """Delete all automatic rules."""
+    count = proxy_manager.clear_rules()
+    return {"success": True, "cleared": count}
+
+
+# ---------------------------------------------------------------------------
+# Capture rule tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def capture_rules_list() -> dict[str, Any]:
+    """List all configured capture rules."""
+    try:
+        rules = proxy_manager.list_capture_rules()
+        return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def capture_rule_add(rule: CaptureRule) -> dict[str, Any]:
+    """Add or replace a capture rule.
+
+    Capture rules decide which live HTTP flows are stored. An `include` rule
+    means "only capture if this matches" (when any include rule exists). An
+    `exclude` rule means "never capture if this matches". Exclude rules are
+    evaluated before include rules.
+    """
+    try:
+        proxy_manager.add_capture_rule(rule)
+        return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def capture_rule_update(rule_id: str, rule: CaptureRule) -> dict[str, Any]:
+    """Replace an existing capture rule by id."""
+    try:
+        if rule_id != rule.id:
+            proxy_manager.delete_capture_rule(rule_id)
+            proxy_manager.add_capture_rule(rule)
+            return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+        updated = proxy_manager.update_capture_rule(
+            rule_id, rule.model_dump(exclude_none=True)
+        )
+        if updated is None:
+            return {
+                "success": False,
+                "error": f"Capture rule with id {rule_id} not found",
+            }
+        return {"success": True, "rule": updated.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def capture_rule_delete(rule_id: str) -> dict[str, Any]:
+    """Delete a capture rule by id."""
+    if proxy_manager.delete_capture_rule(rule_id):
+        return {"success": True}
+    return {
+        "success": False,
+        "error": f"Capture rule with id {rule_id} not found",
+    }
+
+
+@mcp.tool()
+def capture_rules_clear() -> dict[str, Any]:
+    """Delete all capture rules."""
+    count = proxy_manager.clear_capture_rules()
+    return {"success": True, "cleared": count}
 
 
 # ---------------------------------------------------------------------------
@@ -138,11 +296,106 @@ def flows_list(
 
 
 @mcp.tool()
-def flow_get(flow_id: int) -> dict[str, Any]:
-    """Get the full details of a single flow."""
+def flow_get(
+    flow_id: int,
+    include_content: bool = True,
+    max_content_size: int | None = None,
+) -> dict[str, Any]:
+    """Get the full details of a single flow.
+
+    If max_content_size is set and content exceeds it, JSON bodies are
+    replaced with a structure preview and other text bodies are truncated.
+    """
     try:
         flow = _get_flow_or_raise(flow_id)
-        return {"success": True, "flow": flow_to_model(flow).model_dump()}
+        flow_data = flow_to_model(flow).model_dump()
+
+        if not include_content:
+            flow_data["request"]["content"] = None
+            if flow_data.get("response"):
+                flow_data["response"]["content"] = None
+            return {"success": True, "flow": flow_data}
+
+        if max_content_size is not None:
+            request = flow_data["request"]
+            request.update(
+                maybe_preview_content(
+                    request.get("content"),
+                    request.get("content_encoding", "text"),
+                    max_content_size,
+                )
+            )
+            response = flow_data.get("response")
+            if response:
+                response.update(
+                    maybe_preview_content(
+                        response.get("content"),
+                        response.get("content_encoding", "text"),
+                        max_content_size,
+                    )
+                )
+
+        return {"success": True, "flow": flow_data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def flow_extract_json(
+    flow_id: int,
+    content_type: str,
+    json_paths: list[str],
+) -> dict[str, Any]:
+    """Extract specific fields from JSON request/response content using JSONPath."""
+    try:
+        flow = _get_flow_or_raise(flow_id)
+
+        if content_type == "request":
+            raw_content = flow.request.raw_content
+            headers = dict(flow.request.headers)
+        elif content_type == "response":
+            if flow.response is None:
+                return {
+                    "success": False,
+                    "error": f"Flow {flow_id} has no response",
+                }
+            raw_content = flow.response.raw_content
+            headers = dict(flow.response.headers)
+        else:
+            return {
+                "success": False,
+                "error": "content_type must be 'request' or 'response'",
+            }
+
+        if raw_content is None:
+            return {
+                "success": False,
+                "error": f"No {content_type} content available",
+            }
+
+        content_type_header = headers.get("Content-Type", "").lower()
+        if "application/json" not in content_type_header and "text/json" not in content_type_header:
+            # Still attempt to parse; many responses omit the proper header.
+            pass
+
+        try:
+            text = raw_content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            return {
+                "success": False,
+                "error": f"{content_type} content is not valid UTF-8: {e}",
+            }
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"{content_type} content is not valid JSON: {e}",
+            }
+
+        result = extract_with_jsonpath(data, json_paths)
+        return {"success": True, "extracted": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -155,6 +408,18 @@ def flows_clear(stop_proxy: bool = False) -> dict[str, Any]:
     if stop_proxy:
         result["proxy_stopped"] = proxy_manager.stop()
     return result
+
+
+@mcp.tool()
+def clear_all(stop_proxy: bool = False) -> dict[str, Any]:
+    """Clear all in-memory flows, automatic rules and capture rules.
+
+    Optionally stop the proxy too.
+    """
+    try:
+        return proxy_manager.clear_all(stop_proxy=stop_proxy)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +437,38 @@ def flow_replay(flow_id: int, use_modified: bool = True) -> dict[str, Any]:
                 "error": "Proxy is not running. Start it with proxy_start before replaying.",
             }
         return replay_flows(proxy_manager.call, [flow], use_modified=use_modified)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def flow_resume(flow_id: int) -> dict[str, Any]:
+    """Resume an intercepted (breakpoint-paused) flow."""
+    try:
+        flow = _get_flow_or_raise(flow_id)
+        if not proxy_manager.is_running:
+            return {
+                "success": False,
+                "error": "Proxy is not running. Start it with proxy_start before resuming.",
+            }
+        proxy_manager.call("flow.resume", [flow])
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def flow_kill(flow_id: int) -> dict[str, Any]:
+    """Kill a running or intercepted flow."""
+    try:
+        flow = _get_flow_or_raise(flow_id)
+        if not proxy_manager.is_running:
+            return {
+                "success": False,
+                "error": "Proxy is not running. Start it with proxy_start before killing.",
+            }
+        proxy_manager.call("flow.kill", [flow])
+        return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

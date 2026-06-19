@@ -21,6 +21,7 @@ from mitmproxy_mcp.models import Header
 from mitmproxy_mcp.server import (
     flow_create,
     flow_delete,
+    flow_extract_json,
     flow_get,
     flow_replay,
     flow_update,
@@ -28,6 +29,7 @@ from mitmproxy_mcp.server import (
     flows_list,
     flows_load,
     flows_save,
+    proxy_list_options,
     proxy_start,
     proxy_status,
     proxy_stop,
@@ -43,15 +45,20 @@ def test_all_tools() -> None:
     r = proxy_status()
     assert r["running"] is False
 
-    # 2. proxy_start
+    # 2. proxy_list_options
+    r = proxy_list_options()
+    assert "listen_host" in r["options"]
+    assert "mode" in r["options"]
+
+    # 3. proxy_start
     r = proxy_start(port=18082)
     assert r["success"] is True
 
-    # 3. proxy_status (running)
+    # 4. proxy_status (running)
     r = proxy_status()
     assert r["running"] is True
 
-    # 4. flow_create
+    # 5. flow_create
     r = flow_create(
         "GET",
         "http://127.0.0.1:9999/test",
@@ -61,12 +68,12 @@ def test_all_tools() -> None:
     assert r["success"] is True
     fid = r["flow_id"]
 
-    # 5. flow_get
+    # 6. flow_get
     r = flow_get(fid)
     assert r["success"] is True
     assert r["flow"]["comment"] == "created"
 
-    # 6. flow_update
+    # 7. flow_update
     r = flow_update(
         fid,
         request_method="POST",
@@ -80,11 +87,32 @@ def test_all_tools() -> None:
     assert r["flow"]["marked"] is True
     assert r["flow"]["request"]["method"] == "POST"
 
-    # 7. flows_list
-    r = flows_list()
-    assert r["total"] >= 1
+    # 8. flow_extract_json and flow_get with preview
+    json_fid = flow_create(
+        "POST",
+        "http://127.0.0.1:9999/api",
+        headers=[Header(name="Content-Type", value="application/json")],
+        body='{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}',
+    )["flow_id"]
+    r = flow_extract_json(
+        json_fid,
+        content_type="request",
+        json_paths=["$.users[*].name", "$.count"],
+    )
+    assert r["success"] is True
+    assert r["extracted"]["$.users[*].name"] == ["Alice", "Bob"]
+    assert r["extracted"]["$.count"] == 2
 
-    # 8. flows_save
+    r = flow_get(json_fid, max_content_size=20)
+    assert r["success"] is True
+    assert r["flow"]["request"]["content"] is None
+    assert "content_preview" in r["flow"]["request"]
+
+    # 9. flows_list
+    r = flows_list()
+    assert r["total"] >= 2
+
+    # 10. flows_save
     path = "/tmp/all_tools_test.mitm"
     if os.path.exists(path):
         os.remove(path)
@@ -92,16 +120,16 @@ def test_all_tools() -> None:
     assert r["success"] is True
     assert os.path.exists(path)
 
-    # 9. flows_clear
+    # 11. flows_clear
     r = flows_clear()
     assert r["success"] is True
     assert flows_list()["total"] == 0
 
-    # 10. flows_load
+    # 12. flows_load
     r = flows_load(path)
     assert r["loaded"] >= 1
 
-    # 11. request_send
+    # 13. request_send
     server = subprocess.Popen(
         ["python", "-m", "http.server", "19001", "--bind", "127.0.0.1"],
         stdout=subprocess.DEVNULL,
@@ -113,13 +141,13 @@ def test_all_tools() -> None:
         assert r["success"] is True
         time.sleep(2)
 
-        # 12. flow_replay
+        # 14. flow_replay
         fid = store.list_ids()[0]
         r = flow_replay(fid, use_modified=False)
         assert r["success"] is True
         time.sleep(2)
 
-        # 13. flow_delete
+        # 15. flow_delete
         fid = store.list_ids()[0]
         r = flow_delete(fid)
         assert r["success"] is True
@@ -127,7 +155,7 @@ def test_all_tools() -> None:
     finally:
         server.terminate()
 
-    # 14. proxy_stop
+    # 16. proxy_stop
     r = proxy_stop()
     assert r["success"] is True
     assert proxy_status()["running"] is False
@@ -135,4 +163,4 @@ def test_all_tools() -> None:
 
 if __name__ == "__main__":
     test_all_tools()
-    print("All 13 tools exercised successfully.")
+    print("All tools exercised successfully.")

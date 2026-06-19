@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.28.0",
     "mitmproxy>=12.2.3",
+    "jsonpath-ng>=1.5.3",
 ]
 
 [project.optional-dependencies]
