@@ -43,6 +43,7 @@ class ResponseModel(BaseModel):
 
 class FlowModel(BaseModel):
     id: str
+    store_id: int
     request: RequestModel
     response: ResponseModel | None = None
     client_address: list[str] | None = None
@@ -113,7 +114,7 @@ def response_to_model(resp: http.Response) -> ResponseModel:
     )
 
 
-def flow_to_model(flow: http.HTTPFlow) -> FlowModel:
+def flow_to_model(flow: http.HTTPFlow, store_id: int | None = None) -> FlowModel:
     """Convert an mitmproxy HTTPFlow to a Pydantic FlowModel."""
     client_address: list[str] | None = None
     server_address: list[str] | None = None
@@ -125,6 +126,7 @@ def flow_to_model(flow: http.HTTPFlow) -> FlowModel:
 
     return FlowModel(
         id=flow.id,
+        store_id=store_id if store_id is not None else -1,
         request=request_to_model(flow.request),
         response=response_to_model(flow.response) if flow.response else None,
         client_address=client_address,

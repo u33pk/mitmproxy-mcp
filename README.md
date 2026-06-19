@@ -139,6 +139,10 @@ Install it in your browser or system keychain. See [mitmproxy docs](https://docs
 | `capture_rule_update` | Update a capture rule |
 | `capture_rule_delete` | Delete a capture rule |
 | `capture_rules_clear` | Delete all capture rules |
+| `mock_server_start` | Start a mock server from captured flows |
+| `mock_server_add_flows` | Add more flows to the mock server |
+| `mock_server_stop` | Stop the mock server |
+| `mock_server_status` | Show the number of mocked flows |
 
 ## Automatic rules (breakpoints & modifications)
 
@@ -184,6 +188,28 @@ Logic:
 - The existing `capture_filter` option still applies as a base filter.
 
 Use `capture_rule_add` to add rules, `capture_rules_list` to inspect them, and `capture_rules_clear` to remove all.
+
+## Mock server (server-side playback)
+
+Turn captured flows into a local mock server. Once started, matching requests receive the recorded response directly without contacting the real server.
+
+```bash
+# 1. Start the proxy and capture some real traffic
+# 2. Use mock_server_start to replay the captured flows
+```
+
+```python
+# Conceptual usage from an LLM:
+mock_server_start(flow_ids=[1, 2, 3])
+# Now requests matching the recorded ones return recorded responses.
+mock_server_status()
+mock_server_stop()
+```
+
+This is different from `flow_replay`:
+
+- `flow_replay` re-sends the request to the real server.
+- `mock_server_start` intercepts incoming requests and returns recorded responses.
 
 ## Playwright / browser automation
 

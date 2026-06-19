@@ -140,8 +140,23 @@ Only capture API traffic and ignore health checks:
 [
   {"id": "api-only", "filter": "~u api.example.com", "action": "include"},
   {"id": "skip-health", "filter": "~u api.example.com/health", "action": "exclude"}
+,
+  {"id": "skip-health", "filter": "~u api.example.com/health", "action": "exclude"}
 ]
 ```
+
+## Mock server
+
+The mock server uses mitmproxy's `serverplayback` addon. It is exposed via `mock_server_*` tools:
+
+- `mock_server_start(flow_ids=None, ignore_host=False, ignore_port=False, ignore_params=None, ignore_content=False, extra="forward")`
+- `mock_server_add_flows(flow_ids)`
+- `mock_server_stop()`
+- `mock_server_status()`
+
+When active, matching incoming requests receive recorded responses without contacting the origin. This is different from `flow_replay`, which re-sends requests to the real server.
+
+The `store_id` field in `FlowModel` is the identifier LLMs should use with these tools (and with `flow_get`, `flow_update`, etc.).
 
 ## Adding a new tool
 

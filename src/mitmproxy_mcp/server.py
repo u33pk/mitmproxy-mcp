@@ -291,7 +291,7 @@ def flows_list(
         "total": store.count(),
         "offset": offset,
         "limit": limit,
-        "flows": [flow_to_model(f).model_dump() for _, f in items],
+        "flows": [flow_to_model(f, store_id=i).model_dump() for i, f in items],
     }
 
 
@@ -308,7 +308,7 @@ def flow_get(
     """
     try:
         flow = _get_flow_or_raise(flow_id)
-        flow_data = flow_to_model(flow).model_dump()
+        flow_data = flow_to_model(flow, store_id=flow_id).model_dump()
 
         if not include_content:
             flow_data["request"]["content"] = None
@@ -583,7 +583,7 @@ def flow_update(
             update_response_from_model(flow.response, response_model)
 
         store.update(flow_id, comment=comment, marked=marked, tags=tags)
-        return {"success": True, "flow": flow_to_model(flow).model_dump()}
+        return {"success": True, "flow": flow_to_model(flow, store_id=flow_id).model_dump()}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -608,7 +608,7 @@ def flow_create(
         return {
             "success": True,
             "flow_id": store_id,
-            "flow": flow_to_model(flow).model_dump(),
+            "flow": flow_to_model(flow, store_id=store_id).model_dump(),
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -620,6 +620,122 @@ def flow_delete(flow_id: int) -> dict[str, Any]:
     if store.delete(flow_id):
         return {"success": True}
     return {"success": False, "error": f"Flow with id {flow_id} not found"}
+
+
+# ---------------------------------------------------------------------------
+# Mock server tools (server-side playback)
+# ---------------------------------------------------------------------------
+
+
+def _get_flows_by_ids(flow_ids: list[int]) -> list[http.HTTPFlow]:
+    flows: list[http.HTTPFlow] = []
+    for fid in flow_ids:
+        flow = store.get(fid)
+        if flow is None:
+            raise ValueError(f"Flow with id {fid} not found")
+        flows.append(flow)
+    return flows
+
+
+@mcp.tool()
+def mock_server_start(
+    flow_ids: list[int] | None = None,
+    ignore_host: bool = False,
+    ignore_port: bool = False,
+    ignore_params: list[str] | None = None,
+    ignore_content: bool = False,
+    extra: str = "forward",
+) -> dict[str, Any]:
+    """Start a mock server using captured flows.
+
+    Once started, incoming requests that match a recorded request will receive
+    the recorded response directly, without contacting the real server.
+
+    If ``flow_ids`` is omitted, all currently stored flows are used.
+    """
+    if not proxy_manager.is_running:
+        return {
+            "success": False,
+            "error": "Proxy is not running. Start it with proxy_start before using mock server.",
+        }
+    try:
+        flows: list[http.HTTPFlow] = (
+            _get_flows_by_ids(flow_ids) if flow_ids else store.list_flows()
+        )
+        if not flows:
+            return {"success": False, "error": "No flows available to mock"}
+
+        # Stop any existing mock server first.
+        proxy_manager.call("replay.server.stop")
+
+        # Configure matching behavior.
+        proxy_manager.call(
+            "set", "server_replay_ignore_host", "true" if ignore_host else "false"
+        )
+        proxy_manager.call(
+            "set", "server_replay_ignore_port", "true" if ignore_port else "false"
+        )
+        proxy_manager.call(
+            "set",
+            "server_replay_ignore_params",
+            "[" + ",".join(ignore_params or []) + "]",
+        )
+        proxy_manager.call(
+            "set",
+            "server_replay_ignore_content",
+            "true" if ignore_content else "false",
+        )
+        proxy_manager.call("set", "server_replay_extra", extra)
+
+        proxy_manager.call("replay.server", flows)
+        count = proxy_manager.call("replay.server.count")
+        return {"success": True, "mocked_flows": count}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def mock_server_add_flows(flow_ids: list[int]) -> dict[str, Any]:
+    """Add more captured flows to the running mock server."""
+    if not proxy_manager.is_running:
+        return {
+            "success": False,
+            "error": "Proxy is not running. Start it with proxy_start before using mock server.",
+        }
+    try:
+        flows = _get_flows_by_ids(flow_ids)
+        proxy_manager.call("replay.server.add", flows)
+        count = proxy_manager.call("replay.server.count")
+        return {"success": True, "mocked_flows": count}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def mock_server_stop() -> dict[str, Any]:
+    """Stop the mock server and clear all recorded mock responses."""
+    if not proxy_manager.is_running:
+        return {"success": True, "message": "Proxy is not running"}
+    try:
+        proxy_manager.call("replay.server.stop")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def mock_server_status() -> dict[str, Any]:
+    """Show the number of flows currently loaded into the mock server."""
+    if not proxy_manager.is_running:
+        return {
+            "success": False,
+            "error": "Proxy is not running.",
+        }
+    try:
+        count = proxy_manager.call("replay.server.count")
+        return {"success": True, "mocked_flows": count}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 def main() -> None:

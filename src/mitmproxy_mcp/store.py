@@ -83,6 +83,11 @@ class FlowStore:
         with self._lock:
             return list(self._flows.keys())
 
+    def list_flows(self) -> list[http.HTTPFlow]:
+        """Return all stored flows (no filtering/pagination)."""
+        with self._lock:
+            return list(self._flows.values())
+
     def list(
         self,
         offset: int = 0,
