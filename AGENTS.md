@@ -68,10 +68,11 @@ Integration tests require a running proxy or a browser environment.
 
 ```
 server.py      FastMCP server; defines all tools
-proxy.py       ProxyManager + CaptureAddon + RulesAddon; runs mitmproxy DumpMaster in a thread
+proxy.py       ProxyManager + CaptureAddon + RulesAddon + MappingState; runs mitmproxy DumpMaster in a thread
 store.py       FlowStore: in-memory, thread-safe flow storage with CRUD/filtering
 models.py      Pydantic models for HTTPFlow serialization
 rules.py       Automatic rule engine: match flows and apply actions
+mappings.py    MapLocalRule / MapRemoteRule models and MappingState
 json_tools.py  JSONPath extraction and large-body preview helpers
 utils.py       Helpers: create_http_flow, replay_flows, save_flows, decode_body
 ```
@@ -140,10 +141,19 @@ Only capture API traffic and ignore health checks:
 [
   {"id": "api-only", "filter": "~u api.example.com", "action": "include"},
   {"id": "skip-health", "filter": "~u api.example.com/health", "action": "exclude"}
-,
-  {"id": "skip-health", "filter": "~u api.example.com/health", "action": "exclude"}
 ]
 ```
+
+## URL mappings
+
+The server supports mitmproxy's `map_local` and `map_remote` addons through dedicated MCP tools.
+
+- `map_local_*` tools map matching URLs to local files or directories.
+- `map_remote_*` tools rewrite matching URLs to another remote URL.
+
+Rules are stored in `MappingState` (`src/mitmproxy_mcp/mappings.py`) and synchronized to mitmproxy's `map_local` / `map_remote` options. The actual file serving and URL rewriting is handled by mitmproxy's native addons.
+
+The `local_path` of a `MapLocalRule` must exist at the time the rule is added, because mitmproxy validates it when parsing the spec.
 
 ## Mock server
 
@@ -171,6 +181,7 @@ The `store_id` field in `FlowModel` is the identifier LLMs should use with these
 ```bash
 uv run pytest tests/ -q
 uv run pytest tests/test_rules_integration.py -m integration -v
+uv run pytest tests/test_mappings_integration.py -m integration -v
 uv run mitmproxy-mcp
 uv run python -m mitmproxy_mcp
 uv pip install -e ".[dev]"

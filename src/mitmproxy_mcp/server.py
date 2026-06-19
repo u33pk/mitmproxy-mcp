@@ -19,6 +19,7 @@ from mitmproxy_mcp.models import (
     update_request_from_model,
     update_response_from_model,
 )
+from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule
 from mitmproxy_mcp.proxy import CaptureRule, ProxyManager
 from mitmproxy_mcp.rules import Rule
 from mitmproxy_mcp.store import FlowStore
@@ -229,6 +230,94 @@ def capture_rule_delete(rule_id: str) -> dict[str, Any]:
 def capture_rules_clear() -> dict[str, Any]:
     """Delete all capture rules."""
     count = proxy_manager.clear_capture_rules()
+    return {"success": True, "cleared": count}
+
+
+# ---------------------------------------------------------------------------
+# URL mapping tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def map_local_rules_list() -> dict[str, Any]:
+    """List all map_local rules."""
+    try:
+        rules = proxy_manager.list_map_local_rules()
+        return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def map_local_rule_add(rule: MapLocalRule) -> dict[str, Any]:
+    """Add or replace a map_local rule.
+
+    Matching requests will be served directly from the local file or directory
+    without contacting the remote server.
+    """
+    try:
+        proxy_manager.add_map_local_rule(rule)
+        return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def map_local_rule_delete(rule_id: str) -> dict[str, Any]:
+    """Delete a map_local rule by id."""
+    if proxy_manager.delete_map_local_rule(rule_id):
+        return {"success": True}
+    return {
+        "success": False,
+        "error": f"map_local rule with id {rule_id} not found",
+    }
+
+
+@mcp.tool()
+def map_local_rules_clear() -> dict[str, Any]:
+    """Delete all map_local rules."""
+    count = proxy_manager.clear_map_local_rules()
+    return {"success": True, "cleared": count}
+
+
+@mcp.tool()
+def map_remote_rules_list() -> dict[str, Any]:
+    """List all map_remote rules."""
+    try:
+        rules = proxy_manager.list_map_remote_rules()
+        return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def map_remote_rule_add(rule: MapRemoteRule) -> dict[str, Any]:
+    """Add or replace a map_remote rule.
+
+    Matching requests will have their URL rewritten before being forwarded.
+    """
+    try:
+        proxy_manager.add_map_remote_rule(rule)
+        return {"success": True, "rule": rule.model_dump(exclude_none=True)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def map_remote_rule_delete(rule_id: str) -> dict[str, Any]:
+    """Delete a map_remote rule by id."""
+    if proxy_manager.delete_map_remote_rule(rule_id):
+        return {"success": True}
+    return {
+        "success": False,
+        "error": f"map_remote rule with id {rule_id} not found",
+    }
+
+
+@mcp.tool()
+def map_remote_rules_clear() -> dict[str, Any]:
+    """Delete all map_remote rules."""
+    count = proxy_manager.clear_map_remote_rules()
     return {"success": True, "cleared": count}
 
 

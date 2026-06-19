@@ -143,6 +143,14 @@ Install it in your browser or system keychain. See [mitmproxy docs](https://docs
 | `mock_server_add_flows` | Add more flows to the mock server |
 | `mock_server_stop` | Stop the mock server |
 | `mock_server_status` | Show the number of mocked flows |
+| `map_local_rules_list` | List map_local rules |
+| `map_local_rule_add` | Map a URL pattern to a local file/directory |
+| `map_local_rule_delete` | Delete a map_local rule |
+| `map_local_rules_clear` | Delete all map_local rules |
+| `map_remote_rules_list` | List map_remote rules |
+| `map_remote_rule_add` | Rewrite a URL pattern to another URL |
+| `map_remote_rule_delete` | Delete a map_remote rule |
+| `map_remote_rules_clear` | Delete all map_remote rules |
 
 ## Automatic rules (breakpoints & modifications)
 
@@ -210,6 +218,38 @@ This is different from `flow_replay`:
 
 - `flow_replay` re-sends the request to the real server.
 - `mock_server_start` intercepts incoming requests and returns recorded responses.
+
+## URL mappings
+
+Map requests to local files or rewrite URLs before forwarding.
+
+### map_local
+
+Serve local files for matching URLs:
+
+```json
+{
+  "id": "api-mock",
+  "filter": "~u example.com/api/data",
+  "url_regex": "https://example.com/api/data",
+  "local_path": "/path/to/mock.json"
+}
+```
+
+### map_remote
+
+Rewrite matching URLs to another origin:
+
+```json
+{
+  "id": "staging-redirect",
+  "filter": "~u example.com/api",
+  "url_regex": "https://example.com/api(.*)",
+  "replacement": "https://staging.example.com/api$1"
+}
+```
+
+Use `map_local_rule_add` / `map_remote_rule_add` to add rules, `map_local_rules_list` / `map_remote_rules_list` to inspect them, and `*_rules_clear` to remove all.
 
 ## Playwright / browser automation
 

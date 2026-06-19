@@ -14,6 +14,7 @@ from mitmproxy.addonmanager import Loader
 from mitmproxy.tools.dump import DumpMaster
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
+from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule, MappingState
 from mitmproxy_mcp.rules import Rule, RulesAddon
 from mitmproxy_mcp.store import FlowStore
 
@@ -177,6 +178,7 @@ class ProxyManager:
         self._options: dict[str, Any] = {}
         self.capture_addon = CaptureAddon(self.store)
         self.rules_addon = RulesAddon()
+        self.mapping_state = MappingState()
 
     def _run_proxy(
         self,
@@ -208,6 +210,8 @@ class ProxyManager:
             self.capture_addon.set_capture_filter(capture_filter)
             master.addons.add(self.capture_addon)
             master.addons.add(self.rules_addon)
+            # Sync any mappings that were configured before the proxy started.
+            self._sync_mapping_options(master)
             return master
 
         # with_termlog=False and with_dumper=False keep stdout clean for stdio MCP.
@@ -337,6 +341,8 @@ class ProxyManager:
         cleared_flows = self.store.clear()
         cleared_rules = self.rules_addon.clear_rules()
         cleared_capture_rules = self.capture_addon.clear_rules()
+        self.mapping_state.clear_local_rules()
+        self.mapping_state.clear_remote_rules()
         result: dict[str, Any] = {
             "success": True,
             "cleared_flows": cleared_flows,
@@ -346,6 +352,63 @@ class ProxyManager:
         if stop_proxy:
             result["proxy_stopped"] = self.stop()["success"]
         return result
+
+    # ------------------------------------------------------------------
+    # URL mappings
+    # ------------------------------------------------------------------
+
+    def _sync_mapping_options(self, master: DumpMaster | None = None) -> None:
+        """Update mitmproxy map_local/map_remote options from current state.
+
+        If ``master`` is provided, update directly; otherwise use ``call()``
+        so the update runs in the mitmproxy event loop.
+        """
+        local_specs = self.mapping_state.local_specs()
+        remote_specs = self.mapping_state.remote_specs()
+
+        if master is not None:
+            master.options.update(map_local=local_specs, map_remote=remote_specs)
+            return
+
+        if self.is_running:
+            self.call("set", "map_local", *local_specs)
+            self.call("set", "map_remote", *remote_specs)
+
+    def list_map_local_rules(self) -> list[MapLocalRule]:
+        return self.mapping_state.list_local_rules()
+
+    def add_map_local_rule(self, rule: MapLocalRule) -> None:
+        self.mapping_state.add_local_rule(rule)
+        self._sync_mapping_options()
+
+    def delete_map_local_rule(self, rule_id: str) -> bool:
+        deleted = self.mapping_state.delete_local_rule(rule_id)
+        if deleted:
+            self._sync_mapping_options()
+        return deleted
+
+    def clear_map_local_rules(self) -> int:
+        count = self.mapping_state.clear_local_rules()
+        self._sync_mapping_options()
+        return count
+
+    def list_map_remote_rules(self) -> list[MapRemoteRule]:
+        return self.mapping_state.list_remote_rules()
+
+    def add_map_remote_rule(self, rule: MapRemoteRule) -> None:
+        self.mapping_state.add_remote_rule(rule)
+        self._sync_mapping_options()
+
+    def delete_map_remote_rule(self, rule_id: str) -> bool:
+        deleted = self.mapping_state.delete_remote_rule(rule_id)
+        if deleted:
+            self._sync_mapping_options()
+        return deleted
+
+    def clear_map_remote_rules(self) -> int:
+        count = self.mapping_state.clear_remote_rules()
+        self._sync_mapping_options()
+        return count
 
     def call(self, command_name: str, *args: Any, timeout: float = 30) -> Any:
         """Thread-safely call a mitmproxy command in its event loop."""
