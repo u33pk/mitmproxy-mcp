@@ -13,6 +13,7 @@
   - **修改**: `flow_action(action="update")`, `flow_action(action="create")`
 - **基于 mitmproxy 自身引擎** 实现重放和保存，不重复造轮子。
 - **stdio 传输**，开箱兼容 Claude Desktop。
+- **SSE 传输**，可远程或网络客户端连接（Claude Code、Cursor 等）。
 - 如需可视化界面，可直接使用 mitmproxy 自带的 Web UI（`mitmweb`）。
 
 ## 安装
@@ -45,6 +46,27 @@ uv pip install -e .
 ```
 
 示例配置也可参考 [`examples/mcp-config.json`](examples/mcp-config.json)。
+
+### SSE 配置（Claude Code / 远程客户端）
+
+启动 SSE 服务器：
+
+```bash
+uv run mitmproxy-mcp --transport sse --host 127.0.0.1 --port 8081
+```
+
+然后在 MCP 客户端配置中连接：
+
+```json
+{
+  "mcpServers": {
+    "mitmproxy": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8081/sse"
+    }
+  }
+}
+```
 
 ## 快速开始
 

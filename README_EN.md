@@ -13,6 +13,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
   - **Modify**: `flow_action(action="update")`, `flow_action(action="create")`
 - **Built on mitmproxy's own engine** for replay and save, so we don't reinvent the wheel.
 - **stdio transport** for out-of-the-box Claude Desktop compatibility.
+- **SSE transport** for remote or network-based MCP clients (Claude Code, Cursor, etc.).
 - Uses mitmproxy's existing web UI (`mitmweb`) if you prefer a visual inspector.
 
 ## Install
@@ -45,6 +46,27 @@ Add this to your Claude Desktop config (macOS: `~/Library/Application Support/Cl
 ```
 
 A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json).
+
+### SSE configuration (Claude Code / remote clients)
+
+Start the SSE server:
+
+```bash
+uv run mitmproxy-mcp --transport sse --host 127.0.0.1 --port 8081
+```
+
+Then connect from your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "mitmproxy": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8081/sse"
+    }
+  }
+}
+```
 
 ## Quick start
 

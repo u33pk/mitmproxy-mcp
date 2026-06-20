@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -37,6 +38,12 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("mitmproxy-mcp")
 store = FlowStore()
 proxy_manager = ProxyManager(store)
+
+
+def _configure_mcp_settings(host: str, port: int) -> None:
+    """Apply host/port to the global FastMCP settings for SSE transport."""
+    mcp.settings.host = host
+    mcp.settings.port = port
 
 
 # =============================================================================
@@ -929,8 +936,33 @@ def tool_info(tool_name: str, cmd: str | None = None) -> dict[str, Any]:
 
 
 def main() -> None:
-    """Run the MCP server over stdio."""
-    mcp.run(transport="stdio")
+    """Run the MCP server over stdio or SSE."""
+    parser = argparse.ArgumentParser(description="mitmproxy-mcp MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="MCP transport to use (default: stdio)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host to bind when using SSE transport (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8081,
+        help="Port to bind when using SSE transport (default: 8081)",
+    )
+    args = parser.parse_args()
+
+    if args.transport == "sse":
+        _configure_mcp_settings(args.host, args.port)
+        logger.info("Starting SSE server on %s:%d", args.host, args.port)
+        mcp.run(transport="sse")
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
