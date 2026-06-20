@@ -326,6 +326,28 @@ See `examples/crypto_xor_example.py` (simple XOR) and `examples/crypto_dynamic_k
 - Look up a previous handshake flow in `decrypt_request` to derive a session key.
 - Return `CryptoResult(error="...")` so the reason surfaces in `crypt_ctl status`.
 
+## MCP Resources
+
+In addition to tools, the server exposes read-only MCP resources that clients can read like files, reducing the need for repeated tool calls:
+
+| Resource URI | Content |
+|---|---|
+| `mitmproxy://proxy/status` | Proxy running state, listen address, capture counts, CA summary |
+| `mitmproxy://flows/latest` | Last 20 flow summaries (no bodies, low context usage) |
+| `mitmproxy://flows/{id}` | Full details of a single flow |
+| `mitmproxy://config/rules` | Snapshot of all active rules and crypto scripts |
+
+Example usage (conceptual):
+
+```text
+Read mitmproxy://proxy/status to check if the proxy is running
+Read mitmproxy://flows/latest to quickly browse recent traffic
+Read mitmproxy://flows/42 for the full details of flow #42
+Read mitmproxy://config/rules to see all active rules
+```
+
+> Current version supports reading only; subscription/push is not yet implemented.
+
 ## Tools
 
 | Tool | Commands / Description |

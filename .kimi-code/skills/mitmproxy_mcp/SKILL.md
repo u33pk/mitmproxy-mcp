@@ -43,6 +43,19 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 >
 > **Security:** `crypt_ctl(cmd="load")` executes arbitrary Python from the given path. Only load scripts you trust.
 
+## MCP Resources
+
+The server also exposes read-only resources that you can read directly:
+
+| Resource URI | Purpose |
+|---|---|
+| `mitmproxy://proxy/status` | Check proxy state without calling `proxy_ctl(status)` |
+| `mitmproxy://flows/latest` | Get a lightweight summary of recent flows (no bodies) |
+| `mitmproxy://flows/{id}` | Read the full details of a specific flow |
+| `mitmproxy://config/rules` | See all active rules and loaded crypto scripts |
+
+Use these to avoid repeated `http_ctl list` / `proxy_ctl status` calls. For example, attach `mitmproxy://flows/latest` to your context to quickly see what has been captured.
+
 ## Common workflows
 
 ### 1. Capture live traffic

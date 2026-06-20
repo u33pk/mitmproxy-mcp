@@ -76,10 +76,11 @@ Integration tests require a running proxy or a browser environment.
 ## Architecture
 
 ```
-server.py      FastMCP server; defines all tools
+server.py      FastMCP server; defines all tools and registers MCP resources
 proxy.py       ProxyManager + CaptureAddon + RulesAddon + CryptoAddon + MappingState; runs mitmproxy DumpMaster in a thread
 store.py       FlowStore: in-memory, thread-safe flow storage with CRUD/filtering
 models.py      Pydantic models for HTTPFlow serialization
+resources.py   MCP resource generators (proxy status, flow summaries, flow detail, config snapshot)
 crypto.py      CryptoHandler base class, CryptoResult, CryptoAddon and script loader
 rules.py       Automatic rule engine: match flows and apply actions
 mappings.py    MapLocalRule / MapRemoteRule models and MappingState
@@ -162,6 +163,17 @@ WebSocket handling is isolated in the `websocket_ctl` tool. Internally it uses:
 Rules are evaluated in order; the first matching rule applies its action and stops further evaluation.
 
 `clear_all()` does **not** clear WebSocket rules; use `websocket_ctl(cmd="clear_rules")`.
+
+## MCP Resources
+
+The server registers read-only MCP resources via `src/mitmproxy_mcp/resources.py`:
+
+- `mitmproxy://proxy/status` — concise proxy state.
+- `mitmproxy://flows/latest` — lightweight summaries of the most recent flows.
+- `mitmproxy://flows/{id}` — full `FlowModel` for a single flow.
+- `mitmproxy://config/rules` — snapshot of automatic/capture/map/crypto/websocket rules.
+
+These are exposed in `server.py` with `@mcp.resource()` and `mcp._resource_manager.add_template()`. They are read-only and use the same thread-safe `store`/`proxy_manager` as the tools.
 
 ## Crypto transformation (`crypt_ctl`)
 

@@ -23,6 +23,16 @@ from mitmproxy_mcp.models import (
     update_response_from_model,
 )
 from mitmproxy_mcp.proxy import CaptureRule, ProxyManager
+from mitmproxy_mcp.resources import (
+    CONFIG_RULES_URI,
+    FLOW_DETAIL_TEMPLATE,
+    FLOWS_LATEST_URI,
+    PROXY_STATUS_URI,
+    config_rules_resource,
+    flow_detail_resource,
+    flows_latest_resource,
+    proxy_status_resource,
+)
 from mitmproxy_mcp.rules import Rule
 from mitmproxy_mcp.store import FlowStore
 from mitmproxy_mcp.tool_info import get_tool_info
@@ -41,10 +51,37 @@ store = FlowStore()
 proxy_manager = ProxyManager(store)
 
 
-def _configure_mcp_settings(host: str, port: int) -> None:
-    """Apply host/port to the global FastMCP settings for SSE transport."""
-    mcp.settings.host = host
-    mcp.settings.port = port
+# =============================================================================
+# MCP resources
+# =============================================================================
+
+
+@mcp.resource(PROXY_STATUS_URI, name="Proxy Status", mime_type="application/json")
+def proxy_status() -> dict[str, Any]:
+    """Current proxy status: running state, listen address, capture counts, CA summary."""
+    return proxy_status_resource(proxy_manager)
+
+
+@mcp.resource(FLOWS_LATEST_URI, name="Latest Flows", mime_type="application/json")
+def flows_latest() -> list[dict[str, Any]]:
+    """Lightweight list of the most recent captured flows (index fields only)."""
+    return flows_latest_resource(store)
+
+
+@mcp.resource(CONFIG_RULES_URI, name="Active Rules", mime_type="application/json")
+def config_rules() -> dict[str, Any]:
+    """Snapshot of all active rules and loaded crypto scripts."""
+    return config_rules_resource(proxy_manager)
+
+
+# Register the flow-detail template resource.
+mcp._resource_manager.add_template(
+    lambda flow_id: flow_detail_resource(store, int(flow_id)),
+    uri_template=FLOW_DETAIL_TEMPLATE,
+    name="Flow Detail",
+    mime_type="application/json",
+    description="Full details of a single captured flow.",
+)
 
 
 # =============================================================================

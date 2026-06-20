@@ -326,6 +326,28 @@ class MyHandler(CryptoHandler):
 - 在 `decrypt_request` 中查询历史 handshake 流量来推导会话密钥。
 - 返回 `CryptoResult(error="...")` 在 `crypt_ctl status` 中向 LLM 报告原因。
 
+## MCP Resources
+
+除 tools 外，服务器还暴露一组只读的 MCP resources，客户端可以像读取文件一样直接获取状态，减少 tool 调用次数：
+
+| Resource URI | 内容 |
+|---|---|
+| `mitmproxy://proxy/status` | 代理运行状态、监听地址、捕获数量、CA 摘要 |
+| `mitmproxy://flows/latest` | 最近 20 条 flow 摘要（无 body，低上下文占用） |
+| `mitmproxy://flows/{id}` | 单条 flow 完整详情 |
+| `mitmproxy://config/rules` | 当前所有规则与加解密脚本汇总 |
+
+用法示例（概念）：
+
+```text
+读取 mitmproxy://proxy/status 查看代理是否已启动
+读取 mitmproxy://flows/latest 快速浏览最近流量
+读取 mitmproxy://flows/42 查看第 42 条流量的完整详情
+读取 mitmproxy://config/rules 查看当前生效的所有规则
+```
+
+> 当前版本只支持读取，暂不支持订阅推送。
+
 ## 工具
 
 | 工具 | 命令 / 说明 |
