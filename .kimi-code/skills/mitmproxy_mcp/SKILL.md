@@ -31,6 +31,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 | `websocket_ctl` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` | WebSocket inspection / injection / rules |
 | `http_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
+| `crypt_ctl` | `list`, `load`, `unload`, `reload`, `status` | User-defined encryption/decryption scripts |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
 | `capture_rule_ctl` | `list`, `add`, `delete`, `clear` | Include/exclude capture rules |
 | `mock_server_ctl` | `start`, `add`, `stop`, `status` | Server-side playback |
@@ -39,6 +40,8 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 | `tool_info` | `tool_name`, `cmd` | Progressive documentation |
 
 > Always prefer `tool_info(tool_name, cmd)` when you are unsure about parameters or need examples.
+>
+> **Security:** `crypt_ctl(cmd="load")` executes arbitrary Python from the given path. Only load scripts you trust.
 
 ## Common workflows
 
@@ -165,7 +168,20 @@ proxy_ctl(cmd="wireguard_config")
 
 > Trust the mitmproxy CA on the client to decrypt HTTPS/HTTP3.
 
-### 10. TLS / certificate options (`ca_ctl`)
+### 10. User-defined encryption/decryption (`crypt_ctl`)
+
+For applications with user-space encryption, write a Python script that subclasses `CryptoHandler` and load it dynamically:
+
+```python
+crypt_ctl(cmd="load", script_path="/path/to/my_crypto.py")
+http_ctl(cmd="get", flow_id=1)  # returns decrypted_content alongside raw content
+flow_action(action="update", flow_id=1, decrypted_request_body='{"foo":"bar"}')
+flow_action(action="replay", flow_id=1)  # addon re-encrypts before sending
+```
+
+Handlers can access the full `FlowStore` and keep cross-request state in `self.context`, enabling dynamic keys derived from earlier traffic (e.g. a `/auth/login` response).
+
+### 11. TLS / certificate options (`ca_ctl`)
 
 Use the dedicated `ca_ctl` tool for certificate management:
 
@@ -191,6 +207,7 @@ ca_ctl(cmd="set_client_cert", cert_path="/path/to/client.pem", key_path="/path/t
 - Capture rules use include/exclude logic; if no include rules exist, everything is captured.
 - WebSocket connections are managed by `websocket_ctl`; use it for list, get, inject, connect and message modification rules.
 - Check `flow["protocol"]` to see HTTP version, ALPN, TLS version and SNI.
+- Use `crypt_ctl` for user-space encryption; decrypted plaintext appears in `flow["request"]["decrypted_content"]` / `flow["response"]["decrypted_content"]`.
 - Use `tool_info("proxy_ctl", cmd="start")` and `tool_info("proxy_ctl", cmd="wireguard_config")` for details.
 
 ## Testing

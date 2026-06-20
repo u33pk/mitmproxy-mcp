@@ -282,6 +282,50 @@ websocket_ctl(cmd="add_rule", rule={
 
 Supported actions: `drop`, `replace`, `replace_regex`.
 
+## User-defined encryption/decryption (`crypt_ctl`)
+
+For applications that encrypt traffic in user space (front-end/mobile custom protocols), you can write a Python script that transparently decrypts and encrypts traffic. Once loaded, `http_ctl get` shows decrypted plaintext, and `flow_action(replay)` automatically re-encrypts after modifications.
+
+```python
+crypt_ctl(cmd="load", script_path="/path/to/my_crypto.py")
+crypt_ctl(cmd="list")
+crypt_ctl(cmd="status", script_id="my-handler")
+crypt_ctl(cmd="unload", script_id="my-handler")
+```
+
+A script only needs to subclass `CryptoHandler`:
+
+```python
+from mitmproxy_mcp.crypto import CryptoHandler, CryptoResult
+
+class MyHandler(CryptoHandler):
+    id = "my-handler"
+    filter = "~u api.example.com"
+
+    def decrypt_request(self, flow):
+        return CryptoResult(body=decrypt(flow.request.raw_content))
+
+    def encrypt_request(self, flow, plaintext):
+        return CryptoResult(body=encrypt(plaintext))
+
+    def decrypt_response(self, flow):
+        if flow.response is None:
+            return None
+        return CryptoResult(body=decrypt(flow.response.raw_content))
+```
+
+See `examples/crypto_xor_example.py` (simple XOR) and `examples/crypto_dynamic_key_example.py` (dynamic key from login response) for complete examples.
+
+> ⚠️ Security note: `crypt_ctl` executes the Python file you specify. Only load scripts from trusted sources.
+
+### Dynamic keys / deriving keys from other traffic
+
+`CryptoHandler` is injected with `store` (all captured flows) and `context` (per-handler cross-request state), so handlers can:
+
+- Extract a key from `/auth/login` and cache it in `self.context`.
+- Look up a previous handshake flow in `decrypt_request` to derive a session key.
+- Return `CryptoResult(error="...")` so the reason surfaces in `crypt_ctl status`.
+
 ## Tools
 
 | Tool | Commands / Description |
@@ -291,6 +335,7 @@ Supported actions: `drop`, `replace`, `replace_regex`.
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
+| `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status` (user-defined encryption/decryption scripts) |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
 | `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |

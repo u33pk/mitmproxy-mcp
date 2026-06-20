@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from mitmproxy import http
 from mitmproxy import options as mitmproxy_options
 
+from mitmproxy_mcp.crypto import MODIFIED_REQUEST_KEY, MODIFIED_RESPONSE_KEY
 from mitmproxy_mcp.json_tools import extract_with_jsonpath, maybe_preview_content
 from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule
 from mitmproxy_mcp.models import (
@@ -214,6 +215,9 @@ def _flow_update(
     response_headers: list[Header] | None = None,
     response_body: str | None = None,
     response_body_encoding: str = "text",
+    decrypted_request_body: str | None = None,
+    decrypted_response_body: str | None = None,
+    decrypted_body_encoding: str = "text",
     comment: str | None = None,
     marked: bool | None = None,
     tags: list[str] | None = None,
@@ -278,6 +282,15 @@ def _flow_update(
                 response_model.content = response_body
                 response_model.content_encoding = response_body_encoding  # type: ignore[assignment]
         update_response_from_model(flow.response, response_model)
+
+    # Decrypted plaintext edits are stored as metadata; the CryptoAddon will
+    # re-encrypt them on the next outgoing request/response or replay.
+    if flow.metadata is None:
+        flow.metadata = {}
+    if decrypted_request_body is not None:
+        flow.metadata[MODIFIED_REQUEST_KEY] = decode_body(decrypted_request_body, decrypted_body_encoding)
+    if decrypted_response_body is not None:
+        flow.metadata[MODIFIED_RESPONSE_KEY] = decode_body(decrypted_response_body, decrypted_body_encoding)
 
     store.update(flow_id, comment=comment, marked=marked, tags=tags)
     return {"success": True, "flow": flow_to_model(flow, store_id=flow_id).model_dump()}
@@ -526,6 +539,40 @@ def _websocket_get(flow_id: int, include_content: bool, max_content_size: int | 
 
 
 @mcp.tool()
+def crypt_ctl(
+    cmd: Literal["list", "load", "unload", "reload", "status"],
+    script_path: str | None = None,
+    script_id: str | None = None,
+) -> dict[str, Any]:
+    """Load and manage user-written encryption/decryption scripts. Commands: list, load, unload, reload, status. Use tool_info('crypt_ctl') for details."""
+    try:
+        if cmd == "list":
+            return {"success": True, "scripts": proxy_manager.list_crypto_scripts()}
+        if cmd == "load":
+            if script_path is None:
+                return {"success": False, "error": "script_path is required"}
+            return proxy_manager.load_crypto_script(script_path)
+        if cmd == "unload":
+            if script_id is None:
+                return {"success": False, "error": "script_id is required"}
+            return proxy_manager.unload_crypto_script(script_id)
+        if cmd == "reload":
+            if script_id is None:
+                return {"success": False, "error": "script_id is required"}
+            return proxy_manager.reload_crypto_script(script_id)
+        if cmd == "status":
+            if script_id is None:
+                return {"success": False, "error": "script_id is required"}
+            status = proxy_manager.get_crypto_script_status(script_id)
+            if status is None:
+                return {"success": False, "error": f"Crypto script '{script_id}' not found"}
+            return {"success": True, "script": status}
+        return {"success": False, "error": f"Unknown crypt command: {cmd}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
 def websocket_ctl(
     cmd: Literal[
         "list", "get", "inject", "connect",
@@ -692,6 +739,9 @@ def flow_action(
     response_headers: list[Header] | None = None,
     response_body: str | None = None,
     response_body_encoding: str = "text",
+    decrypted_request_body: str | None = None,
+    decrypted_response_body: str | None = None,
+    decrypted_body_encoding: str = "text",
     comment: str | None = None,
     marked: bool | None = None,
     tags: list[str] | None = None,
@@ -726,6 +776,9 @@ def flow_action(
                 response_headers=response_headers,
                 response_body=response_body,
                 response_body_encoding=response_body_encoding,
+                decrypted_request_body=decrypted_request_body,
+                decrypted_response_body=decrypted_response_body,
+                decrypted_body_encoding=decrypted_body_encoding,
                 comment=comment,
                 marked=marked,
                 tags=tags,

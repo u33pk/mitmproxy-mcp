@@ -396,6 +396,41 @@ TOOL_INFO: dict[str, ToolInfo] = {
             },
         },
     },
+    "crypt_ctl": {
+        "summary": "Load and manage user-written encryption/decryption scripts for transparent traffic transformation.",
+        "commands": {
+            "list": {
+                "description": "List all loaded crypto handler scripts with error counts.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "list"},
+            },
+            "load": {
+                "description": "Load a CryptoHandler script from a Python file. The script must define a CryptoHandler subclass.",
+                "required": ["script_path"],
+                "optional": [],
+                "example": {"cmd": "load", "script_path": "/path/to/crypto_script.py"},
+            },
+            "unload": {
+                "description": "Unload a crypto script by id.",
+                "required": ["script_id"],
+                "optional": [],
+                "example": {"cmd": "unload", "script_id": "my-handler"},
+            },
+            "reload": {
+                "description": "Reload an already loaded crypto script by id.",
+                "required": ["script_id"],
+                "optional": [],
+                "example": {"cmd": "reload", "script_id": "my-handler"},
+            },
+            "status": {
+                "description": "Show detailed status for a loaded crypto script, including the last error.",
+                "required": ["script_id"],
+                "optional": [],
+                "example": {"cmd": "status", "script_id": "my-handler"},
+            },
+        },
+    },
     "websocket_ctl": {
         "summary": "Manage WebSocket connections: inspect, inject, connect and modify messages with rules.",
         "commands": {

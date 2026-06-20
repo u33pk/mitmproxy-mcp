@@ -77,9 +77,10 @@ Integration tests require a running proxy or a browser environment.
 
 ```
 server.py      FastMCP server; defines all tools
-proxy.py       ProxyManager + CaptureAddon + RulesAddon + MappingState; runs mitmproxy DumpMaster in a thread
+proxy.py       ProxyManager + CaptureAddon + RulesAddon + CryptoAddon + MappingState; runs mitmproxy DumpMaster in a thread
 store.py       FlowStore: in-memory, thread-safe flow storage with CRUD/filtering
 models.py      Pydantic models for HTTPFlow serialization
+crypto.py      CryptoHandler base class, CryptoResult, CryptoAddon and script loader
 rules.py       Automatic rule engine: match flows and apply actions
 mappings.py    MapLocalRule / MapRemoteRule models and MappingState
 json_tools.py  JSONPath extraction and large-body preview helpers
@@ -93,6 +94,7 @@ utils.py       Helpers: create_http_flow, replay_flows, save_flows, decode_body
 - Replay and save use mitmproxy's native commands (`replay.client`, `save.file`) rather than reimplementing logic.
 - `CaptureAddon` filters flows with `capture_filter` and a runtime-updatable list of `CaptureRule` objects (`include`/`exclude`).
 - `RulesAddon` runs inside the mitmproxy event loop; its rule list is protected by an `RLock` and can be updated from the MCP tool thread.
+- `CryptoAddon` runs inside the mitmproxy event loop and applies user-loaded `CryptoHandler` scripts to decrypt/encrypt HTTP/WebSocket traffic.
 
 ## Automatic rules
 
@@ -160,6 +162,36 @@ WebSocket handling is isolated in the `websocket_ctl` tool. Internally it uses:
 Rules are evaluated in order; the first matching rule applies its action and stops further evaluation.
 
 `clear_all()` does **not** clear WebSocket rules; use `websocket_ctl(cmd="clear_rules")`.
+
+## Crypto transformation (`crypt_ctl`)
+
+`crypt_ctl` lets users load Python scripts that transparently decrypt and encrypt traffic. Scripts define a `CryptoHandler` subclass (see `src/mitmproxy_mcp/crypto.py`).
+
+Key capabilities:
+
+- Handler methods return `CryptoResult`, which can replace body, add/remove headers, attach metadata, or report errors.
+- `CryptoHandler.store` is injected with the global `FlowStore`, so handlers can inspect previous traffic (e.g. derive a key from an earlier handshake).
+- `CryptoHandler.context` is a per-handler dict for cross-request state (e.g. cache a key returned by `/auth/login`).
+- Decrypted plaintext is exposed in `FlowModel.request.decrypted_content` / `response.decrypted_content`.
+- Edit decrypted plaintext with `flow_action(action="update", decrypted_request_body=...)`; the addon re-encrypts on the next outgoing request or replay.
+
+Example handler skeleton:
+
+```python
+from mitmproxy_mcp.crypto import CryptoHandler, CryptoResult
+
+class MyHandler(CryptoHandler):
+    id = "my-handler"
+    filter = "~u api.example.com"
+
+    def decrypt_request(self, flow):
+        return CryptoResult(body=decrypt(flow.request.raw_content))
+
+    def encrypt_request(self, flow, plaintext):
+        return CryptoResult(body=encrypt(plaintext))
+```
+
+Load it with `crypt_ctl(cmd="load", script_path="/path/to/my_handler.py")`.
 
 ## Protocol metadata
 

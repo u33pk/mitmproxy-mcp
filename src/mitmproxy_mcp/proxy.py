@@ -23,6 +23,7 @@ from mitmproxy.tools.dump import DumpMaster
 from mitmproxy_rs import wireguard
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
+from mitmproxy_mcp.crypto import CryptoAddon, CryptoHandler
 from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule, MappingState
 from mitmproxy_mcp.rules import Rule, RulesAddon
 from mitmproxy_mcp.store import FlowStore
@@ -238,6 +239,7 @@ class ProxyManager:
         self.capture_addon = CaptureAddon(self.store)
         self.rules_addon = RulesAddon()
         self.websocket_rules_addon = WebSocketRulesAddon()
+        self.crypto_addon = CryptoAddon(self.store)
         self.mapping_state = MappingState()
 
     def _run_proxy(
@@ -277,6 +279,7 @@ class ProxyManager:
             master.addons.add(self.capture_addon)
             master.addons.add(self.rules_addon)
             master.addons.add(self.websocket_rules_addon)
+            master.addons.add(self.crypto_addon)
             # Sync any mappings that were configured before the proxy started.
             self._sync_mapping_options(master)
             return master
@@ -407,13 +410,14 @@ class ProxyManager:
         return self.capture_addon.clear_rules()
 
     def clear_all(self, stop_proxy: bool = False) -> dict[str, Any]:
-        """Clear all flows, automatic rules and capture rules.
+        """Clear all flows, automatic rules, capture rules and crypto scripts.
 
         If ``stop_proxy`` is True, also stop the running proxy.
         """
         cleared_flows = self.store.clear()
         cleared_rules = self.rules_addon.clear_rules()
         cleared_capture_rules = self.capture_addon.clear_rules()
+        cleared_crypto_scripts = self.crypto_addon.clear_scripts()
         self.mapping_state.clear_local_rules()
         self.mapping_state.clear_remote_rules()
         result: dict[str, Any] = {
@@ -421,6 +425,7 @@ class ProxyManager:
             "cleared_flows": cleared_flows,
             "cleared_rules": cleared_rules,
             "cleared_capture_rules": cleared_capture_rules,
+            "cleared_crypto_scripts": cleared_crypto_scripts,
         }
         if stop_proxy:
             result["proxy_stopped"] = self.stop()["success"]
@@ -719,6 +724,36 @@ class ProxyManager:
     def clear_websocket_rules(self) -> int:
         """Delete all WebSocket rules."""
         return self.websocket_rules_addon.clear_rules()
+
+    # ------------------------------------------------------------------
+    # Crypto script management
+    # ------------------------------------------------------------------
+
+    def load_crypto_script(self, path: str) -> dict[str, Any]:
+        """Load a CryptoHandler script from a Python file."""
+        script = self.crypto_addon.load_script(path)
+        return {"success": True, "script": script.to_dict()}
+
+    def unload_crypto_script(self, script_id: str) -> dict[str, Any]:
+        """Unload a crypto script by id."""
+        deleted = self.crypto_addon.unload_script(script_id)
+        return {"success": deleted}
+
+    def reload_crypto_script(self, script_id: str) -> dict[str, Any]:
+        """Reload a loaded crypto script by id."""
+        script = self.crypto_addon.reload_script(script_id)
+        return {"success": True, "script": script.to_dict()}
+
+    def list_crypto_scripts(self) -> list[dict[str, Any]]:
+        """Return all loaded crypto scripts."""
+        return [s.to_dict() for s in self.crypto_addon.list_scripts()]
+
+    def get_crypto_script_status(self, script_id: str) -> dict[str, Any] | None:
+        """Return status for a single loaded crypto script."""
+        script = self.crypto_addon.get_status(script_id)
+        if script is None:
+            return None
+        return script.to_dict()
 
     def inject_websocket(
         self,

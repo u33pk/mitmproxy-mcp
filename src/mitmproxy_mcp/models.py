@@ -9,6 +9,12 @@ from mitmproxy import http
 from mitmproxy.websocket import WebSocketData, WebSocketMessage
 from pydantic import BaseModel, Field
 
+from mitmproxy_mcp.crypto import (
+    APPLIED_HANDLERS_KEY,
+    DECRYPTED_REQUEST_KEY,
+    DECRYPTED_RESPONSE_KEY,
+)
+
 
 class Header(BaseModel):
     name: str
@@ -26,6 +32,8 @@ class RequestModel(BaseModel):
     content: str | None = None
     content_encoding: Literal["text", "base64"] = "text"
     content_length: int = 0
+    decrypted_content: str | None = None
+    decrypted_content_encoding: Literal["text", "base64"] = "text"
     timestamp_start: float
     timestamp_end: float
 
@@ -38,6 +46,8 @@ class ResponseModel(BaseModel):
     content: str | None = None
     content_encoding: Literal["text", "base64"] = "text"
     content_length: int = 0
+    decrypted_content: str | None = None
+    decrypted_content_encoding: Literal["text", "base64"] = "text"
     timestamp_start: float
     timestamp_end: float
 
@@ -49,6 +59,9 @@ class WebSocketMessageModel(BaseModel):
     text: str | None = None
     content_encoding: Literal["text", "base64"] = "text"
     content_length: int = 0
+    decrypted_content: str | None = None
+    decrypted_text: str | None = None
+    decrypted_content_encoding: Literal["text", "base64"] = "text"
     timestamp: float
     dropped: bool = False
     injected: bool = False
@@ -87,6 +100,7 @@ class FlowModel(BaseModel):
     marked: bool = False
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    crypto: dict[str, Any] = Field(default_factory=dict)
 
 
 def _encode_content(data: bytes | None) -> tuple[str | None, Literal["text", "base64"]]:
@@ -123,8 +137,9 @@ def headers_from_model(headers: list[Header]) -> http.Headers:
     return http.Headers([(h.name.encode(), h.value.encode()) for h in headers])
 
 
-def request_to_model(req: http.Request) -> RequestModel:
+def request_to_model(req: http.Request, decrypted: bytes | None = None) -> RequestModel:
     content, encoding = _encode_content(req.raw_content)
+    decrypted_content, decrypted_encoding = _encode_content(decrypted)
     return RequestModel(
         method=req.method,
         scheme=req.scheme,
@@ -136,13 +151,16 @@ def request_to_model(req: http.Request) -> RequestModel:
         content=content,
         content_encoding=encoding,
         content_length=len(req.raw_content) if req.raw_content else 0,
+        decrypted_content=decrypted_content,
+        decrypted_content_encoding=decrypted_encoding,
         timestamp_start=req.timestamp_start,
         timestamp_end=req.timestamp_end,
     )
 
 
-def response_to_model(resp: http.Response) -> ResponseModel:
+def response_to_model(resp: http.Response, decrypted: bytes | None = None) -> ResponseModel:
     content, encoding = _encode_content(resp.raw_content)
+    decrypted_content, decrypted_encoding = _encode_content(decrypted)
     return ResponseModel(
         http_version=resp.http_version,
         status_code=resp.status_code,
@@ -151,6 +169,8 @@ def response_to_model(resp: http.Response) -> ResponseModel:
         content=content,
         content_encoding=encoding,
         content_length=len(resp.raw_content) if resp.raw_content else 0,
+        decrypted_content=decrypted_content,
+        decrypted_content_encoding=decrypted_encoding,
         timestamp_start=resp.timestamp_start,
         timestamp_end=resp.timestamp_end,
     )
@@ -174,6 +194,26 @@ def websocket_message_to_model(
         content = base64.b64encode(raw).decode("ascii")
         content_encoding = "base64"
 
+    decrypted_raw: bytes | None = None
+    if getattr(msg, "metadata", None):
+        decrypted_raw = msg.metadata.get(DECRYPTED_REQUEST_KEY)
+
+    decrypted_content: str | None = None
+    decrypted_text: str | None = None
+    decrypted_encoding: Literal["text", "base64"] = "text"
+    if decrypted_raw is not None:
+        if msg.is_text:
+            try:
+                decrypted_text = decrypted_raw.decode("utf-8")
+                decrypted_content = decrypted_text
+            except UnicodeDecodeError:
+                decrypted_text = decrypted_raw.decode("utf-8", errors="replace")
+                decrypted_content = base64.b64encode(decrypted_raw).decode("ascii")
+                decrypted_encoding = "base64"
+        else:
+            decrypted_content = base64.b64encode(decrypted_raw).decode("ascii")
+            decrypted_encoding = "base64"
+
     truncated = False
     if max_content_size is not None and len(raw) > max_content_size:
         truncated = True
@@ -190,6 +230,13 @@ def websocket_message_to_model(
         text=text if not truncated else (text[:max_content_size] + "\n…(truncated)" if text else None),
         content_encoding=content_encoding,
         content_length=len(raw),
+        decrypted_content=decrypted_content if not truncated else (
+            (decrypted_content[:max_content_size] + "\n…(truncated)") if decrypted_content else None
+        ),
+        decrypted_text=decrypted_text if not truncated else (
+            (decrypted_text[:max_content_size] + "\n…(truncated)") if decrypted_text else None
+        ),
+        decrypted_content_encoding=decrypted_encoding,
         timestamp=msg.timestamp,
         dropped=msg.dropped,
         injected=msg.injected,
@@ -240,11 +287,16 @@ def flow_to_model(
         server_sni=flow.server_conn.sni if flow.server_conn else None,
     )
 
+    metadata = dict(flow.metadata) if flow.metadata else {}
+    decrypted_request: bytes | None = metadata.get(DECRYPTED_REQUEST_KEY)
+    decrypted_response: bytes | None = metadata.get(DECRYPTED_RESPONSE_KEY)
+    applied_handlers: list[str] = metadata.get(APPLIED_HANDLERS_KEY, [])
+
     return FlowModel(
         id=flow.id,
         store_id=store_id if store_id is not None else -1,
-        request=request_to_model(flow.request),
-        response=response_to_model(flow.response) if flow.response else None,
+        request=request_to_model(flow.request, decrypted=decrypted_request),
+        response=response_to_model(flow.response, decrypted=decrypted_response) if flow.response else None,
         protocol=protocol,
         is_websocket=is_websocket,
         websocket=websocket_model,
@@ -252,8 +304,13 @@ def flow_to_model(
         server_address=server_address,
         comment=flow.comment or None,
         marked=bool(flow.marked),
-        tags=list(flow.metadata.get("tags", [])) if flow.metadata else [],
-        metadata=dict(flow.metadata) if flow.metadata else {},
+        tags=list(metadata.get("tags", [])),
+        metadata=metadata,
+        crypto={
+            "applied_handlers": applied_handlers,
+            "has_decrypted_request": decrypted_request is not None,
+            "has_decrypted_response": decrypted_response is not None,
+        },
     )
 
 

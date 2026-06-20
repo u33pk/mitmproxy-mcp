@@ -282,6 +282,50 @@ websocket_ctl(cmd="add_rule", rule={
 
 支持的动作：`drop`、`replace`、`replace_regex`。
 
+## 用户自定义加解密（`crypt_ctl`）
+
+对于用户态加密的应用（前端/APP 自定义加密协议），可以编写 Python 脚本实现透明的加解密。加载后，`http_ctl get` 会直接展示解密后的明文；修改明文后重放，`flow_action(replay)` 会自动重新加密。
+
+```python
+crypt_ctl(cmd="load", script_path="/path/to/my_crypto.py")
+crypt_ctl(cmd="list")
+crypt_ctl(cmd="status", script_id="my-handler")
+crypt_ctl(cmd="unload", script_id="my-handler")
+```
+
+脚本只需要继承 `CryptoHandler`：
+
+```python
+from mitmproxy_mcp.crypto import CryptoHandler, CryptoResult
+
+class MyHandler(CryptoHandler):
+    id = "my-handler"
+    filter = "~u api.example.com"
+
+    def decrypt_request(self, flow):
+        return CryptoResult(body=decrypt(flow.request.raw_content))
+
+    def encrypt_request(self, flow, plaintext):
+        return CryptoResult(body=encrypt(plaintext))
+
+    def decrypt_response(self, flow):
+        if flow.response is None:
+            return None
+        return CryptoResult(body=decrypt(flow.response.raw_content))
+```
+
+完整示例见 `examples/crypto_xor_example.py`（简单 XOR）和 `examples/crypto_dynamic_key_example.py`（从登录响应动态获取密钥）。
+
+> ⚠️ 安全提示：`crypt_ctl` 会执行用户指定的 Python 文件，请只加载可信脚本。
+
+### 动态密钥 / 从其他流量计算密钥
+
+`CryptoHandler` 被注入 `store`（全部捕获流量）和 `context`（跨请求状态），因此可以：
+
+- 从 `/auth/login` 响应提取密钥并缓存到 `self.context`。
+- 在 `decrypt_request` 中查询历史 handshake 流量来推导会话密钥。
+- 返回 `CryptoResult(error="...")` 在 `crypt_ctl status` 中向 LLM 报告原因。
+
 ## 工具
 
 | 工具 | 命令 / 说明 |
@@ -291,6 +335,7 @@ websocket_ctl(cmd="add_rule", rule={
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
+| `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status`（用户自定义加解密脚本） |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
 | `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（捕获 include/exclude 规则） |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
