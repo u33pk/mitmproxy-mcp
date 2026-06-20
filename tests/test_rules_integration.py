@@ -21,7 +21,7 @@ import pytest
 
 from mitmproxy_mcp.server import (
     capture_rule_ctl,
-    flow_ctl,
+    http_ctl,
     proxy_ctl,
     rule_ctl,
 )
@@ -34,14 +34,14 @@ def _cleanup():
         proxy_ctl(cmd="stop")
         rule_ctl(cmd="clear")
         capture_rule_ctl(cmd="clear")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
     except Exception:
         pass
     yield
     try:
         rule_ctl(cmd="clear")
         capture_rule_ctl(cmd="clear")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
         proxy_ctl(cmd="stop")
     except Exception:
         pass
@@ -121,7 +121,7 @@ def test_automatic_rule_modifies_response() -> None:
 
         time.sleep(1)
 
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         api_flows = [f for f in flows if f["request"]["path"] == "/api"]
         other_flows = [f for f in flows if f["request"]["path"] == "/other"]
 
@@ -170,7 +170,7 @@ def test_automatic_rule_blocks_request() -> None:
         assert status == 200
 
         time.sleep(1)
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         root_flows = [f for f in flows if f["request"]["path"] == "/"]
         assert len(root_flows) >= 1
         assert root_flows[0]["response"]["status_code"] == 200
@@ -217,7 +217,7 @@ def test_capture_rules_include_exclude() -> None:
 
         time.sleep(1)
 
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
 
         assert "/api/users" in paths
@@ -241,7 +241,7 @@ def test_capture_rules_runtime_update() -> None:
         # First capture everything by adding no rules.
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page1", proxy_port)
         time.sleep(0.5)
-        assert flow_ctl(cmd="list")["total"] == 1
+        assert http_ctl(cmd="list")["total"] == 1
 
         # Add an include rule that only captures /api.
         capture_rule_ctl(
@@ -257,7 +257,7 @@ def test_capture_rules_runtime_update() -> None:
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/api/data", proxy_port)
         time.sleep(0.5)
 
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
         assert "/page1" in paths
         assert "/page2" not in paths
@@ -268,7 +268,7 @@ def test_capture_rules_runtime_update() -> None:
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/page3", proxy_port)
         time.sleep(0.5)
 
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         paths = {f["request"]["path"] for f in flows}
         assert "/page3" in paths
     finally:

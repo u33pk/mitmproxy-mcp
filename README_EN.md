@@ -6,9 +6,9 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 - **Two capture modes**
   - Start a live proxy via `proxy_ctl(cmd="start")` and capture traffic in real time.
-  - Load a previously saved `.mitm` dump with `flow_ctl(cmd="load")` for offline analysis.
+  - Load a previously saved `.mitm` dump with `http_ctl(cmd="load")` for offline analysis.
 - **Core operations**
-  - **View**: `flow_ctl(cmd="list")`, `flow_ctl(cmd="get")`
+  - **View**: `http_ctl(cmd="list")`, `http_ctl(cmd="get")`
   - **Replay**: `flow_action(action="replay")`, `flow_action(action="send")` — backed by mitmproxy's native `replay.client`
   - **Modify**: `flow_action(action="update")`, `flow_action(action="create")`
 - **Built on mitmproxy's own engine** for replay and save, so we don't reinvent the wheel.
@@ -51,7 +51,7 @@ A sample config is also in [`examples/mcp-config.json`](examples/mcp-config.json
 1. Configure your browser or client to use the proxy address shown by `proxy_ctl(cmd="status")` (default `127.0.0.1:8080`).
 2. Ask the LLM to run `proxy_ctl(cmd="start")`.
 3. Browse or make API calls.
-4. Ask the LLM to run `flow_ctl(cmd="list")` and `flow_ctl(cmd="get")` to inspect traffic.
+4. Ask the LLM to run `http_ctl(cmd="list")` and `http_ctl(cmd="get")` to inspect traffic.
 5. Use `flow_action(action="replay")` to resend a request, or `flow_action(action="update")` + `flow_action(action="replay")` to modify and resend.
 
 ### Advanced proxy options
@@ -74,7 +74,7 @@ Use `proxy_ctl(cmd="list_options")` to discover all available keys and their def
 
 ### Large responses and JSON extraction
 
-When inspecting flows with big bodies, use `flow_ctl(cmd="get")` with `max_content_size` to avoid flooding the LLM context:
+When inspecting flows with big bodies, use `http_ctl(cmd="get")` with `max_content_size` to avoid flooding the LLM context:
 
 ```json
 {
@@ -87,7 +87,7 @@ When inspecting flows with big bodies, use `flow_ctl(cmd="get")` with `max_conte
 - JSON bodies return a compact **structure preview**.
 - Non-JSON text bodies are **truncated** with a note.
 
-To pull specific values from JSON request or response bodies, use `flow_ctl(cmd="extract_json")` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
+To pull specific values from JSON request or response bodies, use `http_ctl(cmd="extract_json")` with [JSONPath](https://goessner.net/articles/JsonPath/) expressions:
 
 ```json
 {
@@ -267,7 +267,7 @@ Supported actions: `drop`, `replace`, `replace_regex`.
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
-| `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
 | `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |

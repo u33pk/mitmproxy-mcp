@@ -8,19 +8,19 @@ import time
 import pytest
 import websockets
 
-from mitmproxy_mcp.server import flow_ctl, proxy_ctl, websocket_ctl
+from mitmproxy_mcp.server import http_ctl, proxy_ctl, websocket_ctl
 
 
 @pytest.fixture(autouse=True)
 def _cleanup():
     try:
         proxy_ctl(cmd="stop")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
     except Exception:
         pass
     yield
     try:
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
         proxy_ctl(cmd="stop")
     except Exception:
         pass
@@ -58,7 +58,7 @@ async def _run_test() -> None:
         assert ws_flow["request"]["method"] == "GET"
 
         fid = ws_flow["store_id"]
-        r = flow_ctl(cmd="get", flow_id=fid)
+        r = http_ctl(cmd="get", flow_id=fid)
         assert r["success"] is True
         ws_data = r["flow"]["websocket"]
         assert ws_data is not None

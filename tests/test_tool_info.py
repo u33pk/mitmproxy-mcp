@@ -12,9 +12,9 @@ def test_tool_info_returns_full_doc() -> None:
 
 
 def test_tool_info_returns_command_doc() -> None:
-    r = get_tool_info("flow_ctl", cmd="get")
+    r = get_tool_info("http_ctl", cmd="get")
     assert r["success"] is True
-    assert r["tool"] == "flow_ctl"
+    assert r["tool"] == "http_ctl"
     assert r["cmd"] == "get"
     assert "flow_id" in r["doc"]["required"]
 

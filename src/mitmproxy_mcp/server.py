@@ -91,7 +91,7 @@ def _proxy_list_options() -> dict[str, Any]:
     return {"options": result}
 
 
-def _flows_list(
+def _http_flows_list(
     offset: int = 0,
     limit: int = 50,
     host: str | None = None,
@@ -107,11 +107,13 @@ def _flows_list(
         status=status,
         search=search,
     )
+    # WebSocket flows are owned by websocket_ctl.
+    http_items = [(sid, f) for sid, f in items if f.websocket is None]
     return {
-        "total": store.count(),
+        "total": len(http_items),
         "offset": offset,
         "limit": limit,
-        "flows": [flow_to_model(f, store_id=i).model_dump() for i, f in items],
+        "flows": [flow_to_model(f, store_id=i).model_dump() for i, f in http_items],
     }
 
 
@@ -119,8 +121,11 @@ def _flow_get(
     flow_id: int,
     include_content: bool = True,
     max_content_size: int | None = None,
+    allow_websocket: bool = True,
 ) -> dict[str, Any]:
     flow = _get_flow_or_raise(flow_id)
+    if not allow_websocket and flow.websocket is not None:
+        return {"success": False, "error": f"Flow {flow_id} is a WebSocket flow; use websocket_ctl"}
     flow_data = flow_to_model(flow, store_id=flow_id, max_content_size=max_content_size).model_dump()
 
     if not include_content:
@@ -591,7 +596,7 @@ def websocket_ctl(
 
 
 @mcp.tool()
-def flow_ctl(
+def http_ctl(
     cmd: Literal["list", "get", "delete", "clear", "load", "save", "extract_json"],
     flow_id: int | None = None,
     path: str | None = None,
@@ -607,10 +612,10 @@ def flow_ctl(
     target: Literal["request", "response"] | None = None,
     stop_proxy: bool = False,
 ) -> dict[str, Any]:
-    """Manage captured flows. Commands: list, get, delete, clear, load, save, extract_json. Use tool_info('flow_ctl') for details."""
+    """Manage captured HTTP flows. Commands: list, get, delete, clear, load, save, extract_json. Use tool_info('http_ctl') for details."""
     try:
         if cmd == "list":
-            return _flows_list(
+            return _http_flows_list(
                 offset=offset,
                 limit=limit,
                 host=host,
@@ -625,6 +630,7 @@ def flow_ctl(
                 flow_id=flow_id,
                 include_content=include_content,
                 max_content_size=max_content_size,
+                allow_websocket=False,
             )
         if cmd == "delete":
             if flow_id is None:
@@ -655,7 +661,7 @@ def flow_ctl(
             if not jsonpath:
                 return {"success": False, "error": "jsonpath is required"}
             return _flow_extract_json(flow_id=flow_id, target=target, json_paths=jsonpath)
-        return {"success": False, "error": f"Unknown flow command: {cmd}"}
+        return {"success": False, "error": f"Unknown http command: {cmd}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

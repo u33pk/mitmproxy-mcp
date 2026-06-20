@@ -58,11 +58,11 @@ TOOL_INFO: dict[str, ToolInfo] = {
             },
         },
     },
-    "flow_ctl": {
-        "summary": "Manage and inspect captured HTTP flows.",
+    "http_ctl": {
+        "summary": "Manage and inspect captured HTTP/1, HTTP/2 and HTTP/3 flows.",
         "commands": {
             "list": {
-                "description": "List captured HTTP flows with optional filters and pagination. For WebSocket flows use websocket_ctl.",
+                "description": "List captured HTTP flows with optional filters and pagination. WebSocket flows are excluded; use websocket_ctl for those.",
                 "required": [],
                 "optional": [
                     "offset (int, default 0)",

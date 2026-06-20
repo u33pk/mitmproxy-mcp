@@ -9,7 +9,7 @@ import urllib.request
 import pytest
 
 from mitmproxy_mcp.server import (
-    flow_ctl,
+    http_ctl,
     mock_server_ctl,
     proxy_ctl,
 )
@@ -20,13 +20,13 @@ def _cleanup():
     """Ensure a clean state before and after each test."""
     try:
         proxy_ctl(cmd="stop")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
     except Exception:
         pass
     yield
     try:
         mock_server_ctl(cmd="stop")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
         proxy_ctl(cmd="stop")
     except Exception:
         pass
@@ -71,7 +71,7 @@ def test_mock_server_returns_recorded_response() -> None:
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/", proxy_port)
         time.sleep(0.5)
 
-        flows = flow_ctl(cmd="list")["flows"]
+        flows = http_ctl(cmd="list")["flows"]
         assert len(flows) == 1
         flow_id = flows[0]["store_id"]
         recorded_status = flows[0]["response"]["status_code"]
@@ -109,7 +109,7 @@ def test_mock_server_stop() -> None:
         _http_get_via_proxy(f"http://127.0.0.1:{server_port}/", proxy_port)
         time.sleep(0.5)
 
-        flow_id = flow_ctl(cmd="list")["flows"][0]["store_id"]
+        flow_id = http_ctl(cmd="list")["flows"][0]["store_id"]
         mock_server_ctl(cmd="start", flow_ids=[flow_id])
         assert mock_server_ctl(cmd="status")["mocked_flows"] == 1
 

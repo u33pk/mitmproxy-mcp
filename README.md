@@ -6,9 +6,9 @@
 
 - **两种捕获模式**
   - 通过 `proxy_ctl(cmd="start")` 启动实时代理，实时捕获流量。
-  - 通过 `flow_ctl(cmd="load")` 加载之前保存的 `.mitm` 文件进行离线分析。
+  - 通过 `http_ctl(cmd="load")` 加载之前保存的 `.mitm` 文件进行离线分析。
 - **核心操作**
-  - **查看**: `flow_ctl(cmd="list")`, `flow_ctl(cmd="get")`
+  - **查看**: `http_ctl(cmd="list")`, `http_ctl(cmd="get")`
   - **重放**: `flow_action(action="replay")`, `flow_action(action="send")` —— 基于 mitmproxy 原生 `replay.client`
   - **修改**: `flow_action(action="update")`, `flow_action(action="create")`
 - **基于 mitmproxy 自身引擎** 实现重放和保存，不重复造轮子。
@@ -51,7 +51,7 @@ uv pip install -e .
 1. 将浏览器或客户端配置为使用 `proxy_ctl(cmd="status")` 显示的代理地址（默认 `127.0.0.1:8080`）。
 2. 让 LLM 执行 `proxy_ctl(cmd="start")`。
 3. 浏览网页或调用 API。
-4. 让 LLM 执行 `flow_ctl(cmd="list")` 和 `flow_ctl(cmd="get")` 检查流量。
+4. 让 LLM 执行 `http_ctl(cmd="list")` 和 `http_ctl(cmd="get")` 检查流量。
 5. 使用 `flow_action(action="replay")` 重发请求，或用 `flow_action(action="update")` + `flow_action(action="replay")` 修改后重发。
 
 ### 高级代理选项
@@ -74,7 +74,7 @@ uv pip install -e .
 
 ### 大响应与 JSON 提取
 
-检查大体积响应体时，使用 `flow_ctl(cmd="get")` 的 `max_content_size` 避免占满 LLM 上下文：
+检查大体积响应体时，使用 `http_ctl(cmd="get")` 的 `max_content_size` 避免占满 LLM 上下文：
 
 ```json
 {
@@ -87,7 +87,7 @@ uv pip install -e .
 - JSON 体会返回紧凑的 **结构预览**。
 - 非 JSON 文本体会 **截断** 并附加提示。
 
-要从 JSON 请求或响应体中提取特定值，使用 `flow_ctl(cmd="extract_json")` 配合 [JSONPath](https://goessner.net/articles/JsonPath/) 表达式：
+要从 JSON 请求或响应体中提取特定值，使用 `http_ctl(cmd="extract_json")` 配合 [JSONPath](https://goessner.net/articles/JsonPath/) 表达式：
 
 ```json
 {
@@ -267,7 +267,7 @@ websocket_ctl(cmd="add_rule", rule={
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
-| `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
 | `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（捕获 include/exclude 规则） |

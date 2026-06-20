@@ -29,7 +29,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 | `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` | Proxy lifecycle |
 | `ca_ctl` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` | Certificate / CA management |
 | `websocket_ctl` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` | WebSocket inspection / injection / rules |
-| `flow_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
+| `http_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
 | `capture_rule_ctl` | `list`, `add`, `delete`, `clear` | Include/exclude capture rules |
@@ -48,8 +48,8 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 proxy_ctl(cmd="start", port=8080)
 # User configures browser/client to use 127.0.0.1:8080
 proxy_ctl(cmd="status")
-flow_ctl(cmd="list", limit=20)
-flow_ctl(cmd="get", flow_id=1, max_content_size=4096)
+http_ctl(cmd="list", limit=20)
+http_ctl(cmd="get", flow_id=1, max_content_size=4096)
 ```
 
 ### 2. Modify and replay a request
@@ -63,7 +63,7 @@ flow_action(action="replay", flow_id=1)
 
 ```python
 # Capture real traffic first
-flow_ctl(cmd="list")
+http_ctl(cmd="list")
 mock_server_ctl(cmd="start", flow_ids=[1, 2])
 mock_server_ctl(cmd="status")
 mock_server_ctl(cmd="stop")
@@ -145,7 +145,7 @@ websocket_ctl(cmd="add_rule", rule={
 Every flow exposes a `protocol` object with HTTP version, ALPN, TLS version and SNI for both client and server connections. Use it to identify HTTP/2 vs HTTP/3 (QUIC) traffic:
 
 ```python
-flow_ctl(cmd="get", flow_id=1)["flow"]["protocol"]
+http_ctl(cmd="get", flow_id=1)["flow"]["protocol"]
 ```
 
 ### 9. WireGuard transparent proxy
@@ -187,7 +187,7 @@ ca_ctl(cmd="set_client_cert", cert_path="/path/to/client.pem", key_path="/path/t
 
 - Start with `proxy_ctl(cmd="status")` to check whether the proxy is running.
 - Use `tool_info(tool_name)` or `tool_info(tool_name, cmd="...")` whenever parameter details are needed.
-- Use `max_content_size` in `flow_ctl(cmd="get")` to avoid flooding context with large bodies.
+- Use `max_content_size` in `http_ctl(cmd="get")` to avoid flooding context with large bodies.
 - Capture rules use include/exclude logic; if no include rules exist, everything is captured.
 - WebSocket connections are managed by `websocket_ctl`; use it for list, get, inject, connect and message modification rules.
 - Check `flow["protocol"]` to see HTTP version, ALPN, TLS version and SNI.

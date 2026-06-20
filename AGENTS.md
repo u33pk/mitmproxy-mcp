@@ -194,7 +194,7 @@ WebSocket connections are represented by mitmproxy as `HTTPFlow` objects with a 
 - `CaptureAddon.websocket_message` updates `flow.metadata["websocket_message_count"]`.
 - Messages accumulate on `flow.websocket.messages` and are serialized by `flow_to_model`.
 
-Use `flow_ctl(cmd="list", websocket_only=True)` to find WebSocket flows and `flow_ctl(cmd="get", flow_id=...)` to inspect messages. Binary messages are base64-encoded; text messages expose both `content` and `text`.
+Use `http_ctl(cmd="list", websocket_only=True)` to find WebSocket flows and `http_ctl(cmd="get", flow_id=...)` to inspect messages. Binary messages are base64-encoded; text messages expose both `content` and `text`.
 
 ## Capture rules
 
@@ -246,7 +246,7 @@ The mock server uses mitmproxy's `serverplayback` addon. It is exposed via `mock
 
 When active, matching incoming requests receive recorded responses without contacting the origin. This is different from `flow_action(action="replay")`, which re-sends requests to the real server.
 
-The `store_id` field in `FlowModel` is the identifier LLMs should use with these tools (and with `flow_ctl(cmd="get")`, `flow_action(action="update")`, etc.).
+The `store_id` field in `FlowModel` is the identifier LLMs should use with these tools (and with `http_ctl(cmd="get")`, `flow_action(action="update")`, etc.).
 
 ## Adding a new tool
 
@@ -276,7 +276,7 @@ uv pip install -e ".[dev]"
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
-| `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
 | `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |

@@ -20,7 +20,7 @@ import pytest
 from mitmproxy_mcp.models import Header
 from mitmproxy_mcp.server import (
     flow_action,
-    flow_ctl,
+    http_ctl,
     proxy_ctl,
     store,
 )
@@ -61,8 +61,8 @@ def test_all_tools() -> None:
     assert r["success"] is True
     fid = r["flow_id"]
 
-    # 6. flow_ctl get
-    r = flow_ctl(cmd="get", flow_id=fid)
+    # 6. http_ctl get
+    r = http_ctl(cmd="get", flow_id=fid)
     assert r["success"] is True
     assert r["flow"]["comment"] == "created"
 
@@ -81,7 +81,7 @@ def test_all_tools() -> None:
     assert r["flow"]["marked"] is True
     assert r["flow"]["request"]["method"] == "POST"
 
-    # 8. flow_ctl extract_json and flow_ctl get with preview
+    # 8. http_ctl extract_json and http_ctl get with preview
     json_fid = flow_action(
         action="create",
         method="POST",
@@ -89,7 +89,7 @@ def test_all_tools() -> None:
         headers=[Header(name="Content-Type", value="application/json")],
         body='{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}',
     )["flow_id"]
-    r = flow_ctl(
+    r = http_ctl(
         cmd="extract_json",
         flow_id=json_fid,
         target="request",
@@ -99,30 +99,30 @@ def test_all_tools() -> None:
     assert r["extracted"]["$.users[*].name"] == ["Alice", "Bob"]
     assert r["extracted"]["$.count"] == 2
 
-    r = flow_ctl(cmd="get", flow_id=json_fid, max_content_size=20)
+    r = http_ctl(cmd="get", flow_id=json_fid, max_content_size=20)
     assert r["success"] is True
     assert r["flow"]["request"]["content"] is None
     assert "content_preview" in r["flow"]["request"]
 
-    # 9. flow_ctl list
-    r = flow_ctl(cmd="list")
+    # 9. http_ctl list
+    r = http_ctl(cmd="list")
     assert r["total"] >= 2
 
-    # 10. flow_ctl save
+    # 10. http_ctl save
     path = "/tmp/all_tools_test.mitm"
     if os.path.exists(path):
         os.remove(path)
-    r = flow_ctl(cmd="save", path=path)
+    r = http_ctl(cmd="save", path=path)
     assert r["success"] is True
     assert os.path.exists(path)
 
-    # 11. flow_ctl clear
-    r = flow_ctl(cmd="clear")
+    # 11. http_ctl clear
+    r = http_ctl(cmd="clear")
     assert r["success"] is True
-    assert flow_ctl(cmd="list")["total"] == 0
+    assert http_ctl(cmd="list")["total"] == 0
 
-    # 12. flow_ctl load
-    r = flow_ctl(cmd="load", path=path)
+    # 12. http_ctl load
+    r = http_ctl(cmd="load", path=path)
     assert r["loaded"] >= 1
 
     # 13. flow_action send
@@ -143,11 +143,11 @@ def test_all_tools() -> None:
         assert r["success"] is True
         time.sleep(2)
 
-        # 15. flow_ctl delete
+        # 15. http_ctl delete
         fid = store.list_ids()[0]
-        r = flow_ctl(cmd="delete", flow_id=fid)
+        r = http_ctl(cmd="delete", flow_id=fid)
         assert r["success"] is True
-        assert flow_ctl(cmd="get", flow_id=fid)["success"] is False
+        assert http_ctl(cmd="get", flow_id=fid)["success"] is False
     finally:
         server.terminate()
 

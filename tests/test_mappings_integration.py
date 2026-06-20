@@ -9,7 +9,7 @@ import urllib.request
 import pytest
 
 from mitmproxy_mcp.server import (
-    flow_ctl,
+    http_ctl,
     map_local_ctl,
     map_remote_ctl,
     proxy_ctl,
@@ -21,7 +21,7 @@ def _cleanup():
     """Ensure a clean state before and after each test."""
     try:
         proxy_ctl(cmd="stop")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
         map_local_ctl(cmd="clear")
         map_remote_ctl(cmd="clear")
     except Exception:
@@ -30,7 +30,7 @@ def _cleanup():
     try:
         map_local_ctl(cmd="clear")
         map_remote_ctl(cmd="clear")
-        flow_ctl(cmd="clear")
+        http_ctl(cmd="clear")
         proxy_ctl(cmd="stop")
     except Exception:
         pass
