@@ -181,6 +181,8 @@ flow_action(action="replay", flow_id=1)  # addon re-encrypts before sending
 
 Handlers can access the full `FlowStore` and keep cross-request state in `self.context`, enabling dynamic keys derived from earlier traffic (e.g. a `/auth/login` response).
 
+See [`references/crypto_handler.md`](references/crypto_handler.md) for the full `CryptoHandler` API and algorithm recipes (XOR, AES-CBC/GCM, ChaCha20-Poly1305, RSA, RC4, JSON wrapping, dynamic keys).
+
 ### 11. TLS / certificate options (`ca_ctl`)
 
 Use the dedicated `ca_ctl` tool for certificate management:
