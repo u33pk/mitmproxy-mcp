@@ -179,18 +179,19 @@ The returned `wireguard_config` field is the client INI. You can retrieve it aga
 
 > Note: WireGuard is a Layer-3 VPN and captures all traffic (including QUIC/HTTP3), but you still need to trust the mitmproxy CA certificate to decrypt HTTPS/HTTP3 content.
 
-### WebSocket traffic
+### WebSocket traffic (`websocket_ctl`)
 
-WebSocket connections are captured as HTTP upgrade flows. After a client connects through the proxy, use the `websocket_only` filter to list WebSocket flows:
+WebSocket connections are captured as HTTP upgrade flows and now managed by the dedicated `websocket_ctl` tool:
 
-```json
-{
-  "cmd": "list",
-  "websocket_only": true
-}
+```python
+# List WebSocket flows
+websocket_ctl(cmd="list")
+
+# Inspect a single conversation
+websocket_ctl(cmd="get", flow_id=1, max_content_size=4096)
 ```
 
-Then call `flow_ctl(cmd="get", flow_id=...)` to see the full conversation:
+Returned structure:
 
 ```json
 {
@@ -205,7 +206,59 @@ Then call `flow_ctl(cmd="get", flow_id=...)` to see the full conversation:
 }
 ```
 
-Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_content_size` on `flow_ctl(cmd="get")` to avoid large message payloads.
+Binary messages are base64-encoded (`content_encoding="base64"`).
+
+#### Message injection
+
+Inject a message into an existing WebSocket connection:
+
+```python
+websocket_ctl(cmd="inject", flow_id=1, message="hello from mcp", to_client=False)
+```
+
+- `to_client=True` sends toward the client, `to_client=False` toward the server.
+- `binary=True` sends a binary frame.
+
+#### Active connect
+
+Let the MCP server itself open a WebSocket connection through the proxy:
+
+```python
+websocket_ctl(
+    cmd="connect",
+    url="ws://echo.example.com/",
+    messages=["hello"],
+    wait_for=1,
+    timeout=10,
+)
+```
+
+The result contains the captured `flow_id` and any messages received.
+
+#### Rule-based modification
+
+Add live modification rules to drop or replace WebSocket messages:
+
+```python
+websocket_ctl(cmd="add_rule", rule={
+    "id": "drop-ping",
+    "flow_filter": "~d api.example.com",
+    "direction": "client",
+    "message_filter": "^ping$",
+    "action": "drop",
+})
+
+websocket_ctl(cmd="add_rule", rule={
+    "id": "replace-echo",
+    "direction": "server",
+    "message_filter": "echo:",
+    "action": "replace_regex",
+    "replacement_regex": "echo:",
+    "replacement": "modified:",
+})
+```
+
+Supported actions: `drop`, `replace`, `replace_regex`.
 
 ## Tools
 
@@ -213,6 +266,7 @@ Binary messages are base64-encoded (`content_encoding="base64"`). Use `max_conte
 |------|------------------------|
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
+| `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |

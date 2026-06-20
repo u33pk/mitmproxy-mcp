@@ -141,6 +141,26 @@ When the proxy is running, changes are applied via `proxy_manager.call("set", op
 
 `clear_all()` does **not** clear CA configuration, since CA settings are a separate concern from flows, rules and mappings.
 
+## WebSocket management (`websocket_ctl`)
+
+WebSocket handling is isolated in the `websocket_ctl` tool. Internally it uses:
+
+- `CaptureAddon.websocket_*` hooks to capture upgrade and messages into `FlowStore`.
+- `WebSocketRulesAddon` (in `src/mitmproxy_mcp/websocket_rules.py`) to apply `WebSocketRule` objects inside the `websocket_message` hook.
+- `proxy_manager.call("inject.websocket", flow, to_client, content, is_text)` for message injection.
+- `websockets.connect(..., proxy=...)` for active client connections through the running proxy.
+
+`WebSocketRule` supports:
+
+- `flow_filter`: mitmproxy flowfilter on the parent HTTPFlow.
+- `direction`: `client`, `server`, or `both`.
+- `message_filter`: regex on message text (text frames) or base64 (binary frames).
+- `action`: `drop`, `replace`, `replace_regex`.
+
+Rules are evaluated in order; the first matching rule applies its action and stops further evaluation.
+
+`clear_all()` does **not** clear WebSocket rules; use `websocket_ctl(cmd="clear_rules")`.
+
 ## Protocol metadata
 
 `FlowModel` includes a `protocol` field (`ProtocolInfoModel`) populated by `flow_to_model`:
@@ -255,6 +275,7 @@ uv pip install -e ".[dev]"
 |------|----------|
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
+| `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `flow_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |

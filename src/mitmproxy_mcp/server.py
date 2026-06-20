@@ -503,6 +503,95 @@ def ca_ctl(
         return {"success": False, "error": str(e)}
 
 
+def _websocket_get(flow_id: int, include_content: bool, max_content_size: int | None) -> dict[str, Any]:
+    flow = store.get(flow_id)
+    if flow is None:
+        return {"success": False, "error": f"Flow with id {flow_id} not found"}
+    if flow.websocket is None:
+        return {"success": False, "error": f"Flow with id {flow_id} is not a WebSocket connection"}
+    return {
+        "success": True,
+        "flow": flow_to_model(flow, store_id=flow_id, max_content_size=max_content_size).model_dump(),
+    }
+
+
+@mcp.tool()
+def websocket_ctl(
+    cmd: Literal[
+        "list", "get", "inject", "connect",
+        "list_rules", "add_rule", "delete_rule", "clear_rules",
+    ],
+    flow_id: int | None = None,
+    to_client: bool = True,
+    message: str = "",
+    binary: bool = False,
+    url: str | None = None,
+    headers: list[Header] | None = None,
+    subprotocols: list[str] | None = None,
+    messages: list[str] | None = None,
+    wait_for: int = 0,
+    timeout: float = 10,
+    rule: dict[str, Any] | None = None,
+    rule_id: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+    include_content: bool = True,
+    max_content_size: int | None = None,
+) -> dict[str, Any]:
+    """Manage WebSocket connections: list, get, inject, connect, and message modification rules. Use tool_info('websocket_ctl') for details."""
+    try:
+        if cmd == "list":
+            items = store.list(offset=offset, limit=limit, websocket_only=True)
+            return {
+                "success": True,
+                "total": store.count(websocket_only=True),
+                "offset": offset,
+                "limit": limit,
+                "flows": [flow_to_model(f, store_id=i).model_dump() for i, f in items],
+            }
+        if cmd == "get":
+            if flow_id is None:
+                return {"success": False, "error": "flow_id is required"}
+            return _websocket_get(flow_id, include_content, max_content_size)
+        if cmd == "inject":
+            if flow_id is None:
+                return {"success": False, "error": "flow_id is required"}
+            return proxy_manager.inject_websocket(flow_id, to_client, message, binary)
+        if cmd == "connect":
+            if url is None:
+                return {"success": False, "error": "url is required"}
+            header_dict = {h.name: h.value for h in headers} if headers else None
+            return proxy_manager.connect_websocket(
+                url=url,
+                headers=header_dict,
+                subprotocols=subprotocols,
+                messages=messages,
+                wait_for=wait_for,
+                timeout=timeout,
+            )
+        if cmd == "list_rules":
+            rules = proxy_manager.list_websocket_rules()
+            return {"success": True, "rules": [r.model_dump() for r in rules]}
+        if cmd == "add_rule":
+            if rule is None:
+                return {"success": False, "error": "rule is required"}
+            from mitmproxy_mcp.websocket_rules import WebSocketRule
+            ws_rule = WebSocketRule(**rule)
+            proxy_manager.add_websocket_rule(ws_rule)
+            return {"success": True, "rule": ws_rule.model_dump()}
+        if cmd == "delete_rule":
+            if rule_id is None:
+                return {"success": False, "error": "rule_id is required"}
+            deleted = proxy_manager.delete_websocket_rule(rule_id)
+            return {"success": deleted, "deleted": deleted}
+        if cmd == "clear_rules":
+            count = proxy_manager.clear_websocket_rules()
+            return {"success": True, "cleared": count}
+        return {"success": False, "error": f"Unknown websocket command: {cmd}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @mcp.tool()
 def flow_ctl(
     cmd: Literal["list", "get", "delete", "clear", "load", "save", "extract_json"],

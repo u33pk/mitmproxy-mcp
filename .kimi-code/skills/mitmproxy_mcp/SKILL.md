@@ -1,6 +1,6 @@
 # mitmproxy-mcp
 
-A lightweight MCP server built on mitmproxy. It exposes HTTP/WebSocket capture, replay, modification, mocking and URL mapping as 8 composite MCP tools.
+A lightweight MCP server built on mitmproxy. It exposes HTTP/WebSocket capture, replay, modification, mocking and URL mapping as composite MCP tools.
 
 ## When to use
 
@@ -28,6 +28,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 |------|----------|---------|
 | `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` | Proxy lifecycle |
 | `ca_ctl` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` | Certificate / CA management |
+| `websocket_ctl` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` | WebSocket inspection / injection / rules |
 | `flow_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
@@ -117,11 +118,26 @@ map_remote_ctl(cmd="add", rule={
 })
 ```
 
-### 7. WebSocket traffic
+### 7. WebSocket traffic (`websocket_ctl`)
 
 ```python
-flow_ctl(cmd="list", websocket_only=True)
-flow_ctl(cmd="get", flow_id=5, max_content_size=4096)
+# Inspect
+websocket_ctl(cmd="list")
+websocket_ctl(cmd="get", flow_id=5, max_content_size=4096)
+
+# Inject into an existing connection
+websocket_ctl(cmd="inject", flow_id=5, message="hello", to_client=False)
+
+# Actively open a connection through the proxy
+websocket_ctl(cmd="connect", url="ws://echo.example.com/", messages=["hello"], wait_for=1)
+
+# Add a live modification rule
+websocket_ctl(cmd="add_rule", rule={
+    "id": "drop-ping",
+    "direction": "client",
+    "message_filter": "^ping$",
+    "action": "drop",
+})
 ```
 
 ### 8. Protocol metadata
@@ -173,7 +189,7 @@ ca_ctl(cmd="set_client_cert", cert_path="/path/to/client.pem", key_path="/path/t
 - Use `tool_info(tool_name)` or `tool_info(tool_name, cmd="...")` whenever parameter details are needed.
 - Use `max_content_size` in `flow_ctl(cmd="get")` to avoid flooding context with large bodies.
 - Capture rules use include/exclude logic; if no include rules exist, everything is captured.
-- WebSocket connections appear as HTTP upgrade flows with `is_websocket=True` and a `websocket.messages` list.
+- WebSocket connections are managed by `websocket_ctl`; use it for list, get, inject, connect and message modification rules.
 - Check `flow["protocol"]` to see HTTP version, ALPN, TLS version and SNI.
 - Use `tool_info("proxy_ctl", cmd="start")` and `tool_info("proxy_ctl", cmd="wireguard_config")` for details.
 

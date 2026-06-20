@@ -397,6 +397,75 @@ TOOL_INFO: dict[str, ToolInfo] = {
             },
         },
     },
+    "websocket_ctl": {
+        "summary": "Manage WebSocket connections: inspect, inject, connect and modify messages with rules.",
+        "commands": {
+            "list": {
+                "description": "List captured WebSocket flows.",
+                "required": [],
+                "optional": ["offset (int, default 0)", "limit (int, default 50)"],
+                "example": {"cmd": "list", "limit": 20},
+            },
+            "get": {
+                "description": "Get a single WebSocket flow with its full message history.",
+                "required": ["flow_id"],
+                "optional": ["include_content (bool, default True)", "max_content_size (int)"],
+                "example": {"cmd": "get", "flow_id": 1, "max_content_size": 4096},
+            },
+            "inject": {
+                "description": "Inject a message into an existing WebSocket connection.",
+                "required": ["flow_id", "message"],
+                "optional": ["to_client (bool, default True)", "binary (bool, default False)"],
+                "example": {"cmd": "inject", "flow_id": 1, "message": "hello from mcp", "to_client": False},
+            },
+            "connect": {
+                "description": "Actively open a WebSocket connection through the running proxy and capture it.",
+                "required": ["url"],
+                "optional": [
+                    "headers (list[Header])",
+                    "subprotocols (list[str])",
+                    "messages (list[str])",
+                    "wait_for (int, default 0)",
+                    "timeout (float, default 10)",
+                ],
+                "example": {"cmd": "connect", "url": "ws://echo.websocket.org/", "messages": ["hello"], "wait_for": 1},
+            },
+            "list_rules": {
+                "description": "List WebSocket message modification rules.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "list_rules"},
+            },
+            "add_rule": {
+                "description": "Add a rule that modifies or drops WebSocket messages in real time.",
+                "required": ["rule"],
+                "optional": [],
+                "example": {
+                    "cmd": "add_rule",
+                    "rule": {
+                        "id": "replace-ping",
+                        "flow_filter": "~u api.example.com/ws",
+                        "direction": "server",
+                        "message_filter": "ping",
+                        "action": "replace",
+                        "replacement": "pong",
+                    },
+                },
+            },
+            "delete_rule": {
+                "description": "Delete a WebSocket rule by id.",
+                "required": ["rule_id"],
+                "optional": [],
+                "example": {"cmd": "delete_rule", "rule_id": "replace-ping"},
+            },
+            "clear_rules": {
+                "description": "Delete all WebSocket rules.",
+                "required": [],
+                "optional": [],
+                "example": {"cmd": "clear_rules"},
+            },
+        },
+    },
     "tool_info": {
         "summary": "Query detailed documentation for any MCP tool.",
         "commands": {

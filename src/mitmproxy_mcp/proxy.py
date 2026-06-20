@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import shutil
@@ -10,7 +11,9 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
+import websockets
 from cryptography.hazmat.primitives import serialization
 from mitmproxy import flowfilter
 from mitmproxy import http
@@ -23,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule, MappingState
 from mitmproxy_mcp.rules import Rule, RulesAddon
 from mitmproxy_mcp.store import FlowStore
+from mitmproxy_mcp.websocket_rules import WebSocketRule, WebSocketRulesAddon
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +237,7 @@ class ProxyManager:
         self._ca_config = CaConfig()
         self.capture_addon = CaptureAddon(self.store)
         self.rules_addon = RulesAddon()
+        self.websocket_rules_addon = WebSocketRulesAddon()
         self.mapping_state = MappingState()
 
     def _run_proxy(
@@ -271,6 +276,7 @@ class ProxyManager:
             self.capture_addon.set_capture_filter(capture_filter)
             master.addons.add(self.capture_addon)
             master.addons.add(self.rules_addon)
+            master.addons.add(self.websocket_rules_addon)
             # Sync any mappings that were configured before the proxy started.
             self._sync_mapping_options(master)
             return master
@@ -693,6 +699,119 @@ class ProxyManager:
         dest = dest_dir / src.name
         shutil.copy2(src, dest)
         return {"success": True, "path": str(dest)}
+
+    # ------------------------------------------------------------------
+    # WebSocket management
+    # ------------------------------------------------------------------
+
+    def list_websocket_rules(self) -> list[WebSocketRule]:
+        """Return the currently configured WebSocket message modification rules."""
+        return self.websocket_rules_addon.list_rules()
+
+    def add_websocket_rule(self, rule: WebSocketRule) -> None:
+        """Add or replace a WebSocket message modification rule."""
+        self.websocket_rules_addon.add_rule(rule)
+
+    def delete_websocket_rule(self, rule_id: str) -> bool:
+        """Delete a WebSocket rule by id."""
+        return self.websocket_rules_addon.delete_rule(rule_id)
+
+    def clear_websocket_rules(self) -> int:
+        """Delete all WebSocket rules."""
+        return self.websocket_rules_addon.clear_rules()
+
+    def inject_websocket(
+        self,
+        store_id: int,
+        to_client: bool,
+        message: str,
+        binary: bool = False,
+    ) -> dict[str, Any]:
+        """Inject a message into an existing WebSocket connection."""
+        flow = self.store.get(store_id)
+        if flow is None:
+            return {"success": False, "error": f"Flow with id {store_id} not found"}
+        if flow.websocket is None:
+            return {"success": False, "error": "Flow is not a WebSocket connection"}
+
+        msg_bytes = message.encode("utf-8") if not binary else base64.b64decode(message)
+        try:
+            self.call("inject.websocket", flow, to_client, msg_bytes, not binary)
+        except Exception as e:
+            return {"success": False, "error": f"Failed to inject message: {e}"}
+        return {"success": True, "injected": 1}
+
+    def connect_websocket(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        subprotocols: list[str] | None = None,
+        messages: list[str] | None = None,
+        wait_for: int = 0,
+        timeout: float = 10,
+    ) -> dict[str, Any]:
+        """Actively open a WebSocket connection through the proxy and capture it."""
+        if not self.is_running:
+            return {
+                "success": False,
+                "error": "Proxy is not running. Start it with proxy_ctl(cmd='start') first.",
+            }
+
+        proxy_url = f"http://{self.listen_host}:{self.listen_port}"
+        messages = messages or []
+        parsed = urlparse(url)
+        target_host = parsed.hostname or ""
+        target_port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+        target_path = parsed.path or "/"
+
+        async def _run() -> list[str]:
+            received: list[str] = []
+            async with websockets.connect(
+                url,
+                proxy=proxy_url,
+                additional_headers=headers or {},
+                subprotocols=subprotocols or None,
+                open_timeout=timeout,
+            ) as ws:
+                for msg in messages:
+                    await ws.send(msg)
+                for _ in range(wait_for):
+                    try:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                        received.append(msg if isinstance(msg, str) else base64.b64encode(msg).decode("ascii"))
+                    except asyncio.TimeoutError:
+                        break
+            return received
+
+        try:
+            # Give the capture a moment to register the connection before
+            # looking it up; the websocket handshake completes synchronously.
+            received = asyncio.run(_run())
+        except Exception as e:
+            return {"success": False, "error": f"WebSocket connection failed: {e}"}
+
+        # Find the captured flow by matching host/port/path (mitmproxy stores
+        # the upgrade request with an http/https scheme, so URL equality fails).
+        flow_id: int | None = None
+        for sid in sorted(self.store.snapshot().keys(), reverse=True):
+            flow = self.store.get(sid)
+            if (
+                flow
+                and flow.websocket
+                and flow.request
+                and flow.request.host == target_host
+                and flow.request.port == target_port
+                and flow.request.path == target_path
+            ):
+                flow_id = sid
+                break
+
+        return {
+            "success": True,
+            "flow_id": flow_id,
+            "received": received,
+            "sent": messages,
+        }
 
     def stop(self) -> dict[str, Any]:
         """Stop the mitmproxy thread."""
