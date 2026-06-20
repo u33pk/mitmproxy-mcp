@@ -172,8 +172,13 @@ The server registers read-only MCP resources via `src/mitmproxy_mcp/resources.py
 - `mitmproxy://flows/latest` — lightweight summaries of the most recent flows.
 - `mitmproxy://flows/{id}` — full `FlowModel` for a single flow.
 - `mitmproxy://config/rules` — snapshot of automatic/capture/map/crypto/websocket rules.
+- `mitmproxy://events/latest` — last 10 internal event summaries from `EventBuffer` (proxy lifecycle, captured flows, rule matches, crypto errors). Events are lightweight and only store identifiers, not full bodies.
+- `mitmproxy://crypto/scripts` — loaded `CryptoHandler` scripts with error counts and last errors.
+- `mitmproxy://ca/status` — current `CaConfig` plus proxy running flag.
 
 These are exposed in `server.py` with `@mcp.resource()` and `mcp._resource_manager.add_template()`. They are read-only and use the same thread-safe `store`/`proxy_manager` as the tools.
+
+Event emission is handled by the existing addons: `CaptureAddon` emits `flow:captured`/`websocket:connected`, `RulesAddon` emits `rule:matched`, `WebSocketRulesAddon` emits `websocket_rule:matched`, `CryptoAddon` emits `crypto:error`, and `ProxyManager.start/stop` emit `proxy:started`/`proxy:stopped`.
 
 ## Crypto transformation (`crypt_ctl`)
 

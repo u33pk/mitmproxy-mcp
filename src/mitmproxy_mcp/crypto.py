@@ -15,6 +15,7 @@ from mitmproxy import flowfilter
 from mitmproxy import http
 from pydantic import BaseModel, ConfigDict, Field
 
+from mitmproxy_mcp.events import EventBuffer
 from mitmproxy_mcp.store import FlowStore
 
 logger = logging.getLogger(__name__)
@@ -157,8 +158,13 @@ class LoadedCryptoScript:
 class CryptoAddon:
     """mitmproxy addon that applies user-written CryptoHandler scripts."""
 
-    def __init__(self, store: FlowStore | None = None) -> None:
+    def __init__(
+        self,
+        store: FlowStore | None = None,
+        event_buffer: EventBuffer | None = None,
+    ) -> None:
         self._store = store
+        self._event_buffer = event_buffer
         self._lock = threading.RLock()
         self._scripts: list[LoadedCryptoScript] = []
 
@@ -253,6 +259,15 @@ class CryptoAddon:
         script.error_count += 1
         script.last_error = message
         logger.warning(message)
+        if self._event_buffer is not None:
+            self._event_buffer.emit(
+                "crypto:error",
+                {
+                    "script_id": script.id,
+                    "script_name": script.name,
+                    "message": message,
+                },
+            )
 
     @staticmethod
     def _apply_to_flow(

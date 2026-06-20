@@ -13,6 +13,8 @@ from mitmproxy import flowfilter
 from mitmproxy import http
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from mitmproxy_mcp.events import EventBuffer
+
 logger = logging.getLogger(__name__)
 
 
@@ -160,9 +162,10 @@ def _decode_content(content: str, encoding: Literal["text", "base64"]) -> bytes:
 class RulesAddon:
     """mitmproxy addon that applies user-defined rules to live flows."""
 
-    def __init__(self) -> None:
+    def __init__(self, event_buffer: EventBuffer | None = None) -> None:
         self._lock = threading.RLock()
         self._rules: list[Rule] = []
+        self._event_buffer = event_buffer
 
     # ------------------------------------------------------------------
     # Rule management (called from the MCP tool thread)
@@ -232,6 +235,17 @@ class RulesAddon:
             flow.metadata.setdefault("mitmproxy_mcp_rules_applied", []).extend(
                 applied_rule_ids
             )
+            if self._event_buffer is not None:
+                self._event_buffer.emit(
+                    "rule:matched",
+                    {
+                        "rule_ids": applied_rule_ids,
+                        "phase": phase,
+                        "host": flow.request.host,
+                        "path": flow.request.path,
+                        "method": flow.request.method,
+                    },
+                )
 
     async def _apply_actions(
         self, flow: http.HTTPFlow, actions: list[Action]

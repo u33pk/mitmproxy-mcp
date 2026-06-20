@@ -24,6 +24,7 @@ from mitmproxy_rs import wireguard
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from mitmproxy_mcp.crypto import CryptoAddon, CryptoHandler
+from mitmproxy_mcp.events import EventBuffer
 from mitmproxy_mcp.mappings import MapLocalRule, MapRemoteRule, MappingState
 from mitmproxy_mcp.rules import Rule, RulesAddon
 from mitmproxy_mcp.store import FlowStore
@@ -69,12 +70,14 @@ class CaptureAddon:
         store: FlowStore,
         capture_filter: str | None = None,
         capture_rules: list[CaptureRule] | None = None,
+        event_buffer: EventBuffer | None = None,
     ) -> None:
         self.store = store
         self.capture_filter = capture_filter
         self._filter: flowfilter.TFilter | None = None
         self._lock = threading.RLock()
         self._capture_rules: list[CaptureRule] = []
+        self._event_buffer = event_buffer
         self._compile_filter()
         if capture_rules:
             self.set_rules(capture_rules)
@@ -166,14 +169,33 @@ class CaptureAddon:
 
         return True
 
+    def _emit_flow_captured(self, store_id: int, flow: http.HTTPFlow) -> None:
+        if self._event_buffer is None:
+            return
+        self._event_buffer.emit(
+            "flow:captured",
+            {
+                "store_id": store_id,
+                "method": flow.request.method,
+                "scheme": flow.request.scheme,
+                "host": flow.request.host,
+                "port": flow.request.port,
+                "path": flow.request.path,
+                "status": flow.response.status_code if flow.response else None,
+                "is_websocket": flow.websocket is not None,
+            },
+        )
+
     def response(self, flow: http.HTTPFlow) -> None:
         if self.should_capture(flow):
-            self.store.add(flow)
+            store_id = self.store.add(flow)
+            self._emit_flow_captured(store_id, flow)
 
     def error(self, flow: http.HTTPFlow) -> None:
         # Also capture failed flows so errors are visible.
         if self.should_capture(flow):
-            self.store.add(flow)
+            store_id = self.store.add(flow)
+            self._emit_flow_captured(store_id, flow)
 
     # ------------------------------------------------------------------
     # WebSocket hooks
@@ -184,7 +206,17 @@ class CaptureAddon:
         # ensure the WebSocket flow is tracked in case filters behave
         # differently at upgrade time.
         if self.should_capture(flow):
-            self.store.add(flow)
+            store_id = self.store.add(flow)
+            self._emit_flow_captured(store_id, flow)
+            if self._event_buffer is not None:
+                self._event_buffer.emit(
+                    "websocket:connected",
+                    {
+                        "store_id": store_id,
+                        "host": flow.request.host,
+                        "path": flow.request.path,
+                    },
+                )
 
     def websocket_message(self, flow: http.HTTPFlow) -> None:
         # Messages are appended directly to flow.websocket.messages on the
@@ -236,10 +268,11 @@ class ProxyManager:
         self._options: dict[str, Any] = {}
         self._wireguard_config: str | None = None
         self._ca_config = CaConfig()
-        self.capture_addon = CaptureAddon(self.store)
-        self.rules_addon = RulesAddon()
-        self.websocket_rules_addon = WebSocketRulesAddon()
-        self.crypto_addon = CryptoAddon(self.store)
+        self.event_buffer = EventBuffer()
+        self.capture_addon = CaptureAddon(self.store, event_buffer=self.event_buffer)
+        self.rules_addon = RulesAddon(event_buffer=self.event_buffer)
+        self.websocket_rules_addon = WebSocketRulesAddon(event_buffer=self.event_buffer)
+        self.crypto_addon = CryptoAddon(self.store, event_buffer=self.event_buffer)
         self.mapping_state = MappingState()
 
     def _run_proxy(
@@ -354,6 +387,10 @@ class ProxyManager:
                 "extra_options": prepared_options,
             }
 
+        self.event_buffer.emit(
+            "proxy:started",
+            {"host": host, "port": port, "capture_filter": capture_filter},
+        )
         logger.info(f"mitmproxy started on {host}:{port}")
         result: dict[str, Any] = {
             "success": True,
@@ -872,6 +909,7 @@ class ProxyManager:
         if thread is not None:
             thread.join(timeout=5)
 
+        self.event_buffer.emit("proxy:stopped", {})
         logger.info("mitmproxy stopped")
         return {"success": True}
 

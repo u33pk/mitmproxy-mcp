@@ -24,11 +24,17 @@ from mitmproxy_mcp.models import (
 )
 from mitmproxy_mcp.proxy import CaptureRule, ProxyManager
 from mitmproxy_mcp.resources import (
+    CA_STATUS_URI,
     CONFIG_RULES_URI,
+    CRYPTO_SCRIPTS_URI,
+    EVENTS_LATEST_URI,
     FLOW_DETAIL_TEMPLATE,
     FLOWS_LATEST_URI,
     PROXY_STATUS_URI,
+    ca_status_resource,
     config_rules_resource,
+    crypto_scripts_resource,
+    events_latest_resource,
     flow_detail_resource,
     flows_latest_resource,
     proxy_status_resource,
@@ -72,6 +78,24 @@ def flows_latest() -> list[dict[str, Any]]:
 def config_rules() -> dict[str, Any]:
     """Snapshot of all active rules and loaded crypto scripts."""
     return config_rules_resource(proxy_manager)
+
+
+@mcp.resource(EVENTS_LATEST_URI, name="Latest Events", mime_type="application/json")
+def events_latest() -> list[dict[str, Any]]:
+    """Recent internal events (proxy lifecycle, captured flows, rule matches, crypto errors)."""
+    return events_latest_resource(proxy_manager.event_buffer)
+
+
+@mcp.resource(CRYPTO_SCRIPTS_URI, name="Crypto Scripts", mime_type="application/json")
+def crypto_scripts() -> list[dict[str, Any]]:
+    """Loaded encryption/decryption scripts and their runtime error state."""
+    return crypto_scripts_resource(proxy_manager)
+
+
+@mcp.resource(CA_STATUS_URI, name="CA Status", mime_type="application/json")
+def ca_status() -> dict[str, Any]:
+    """Current certificate authority and client certificate configuration."""
+    return ca_status_resource(proxy_manager)
 
 
 # Register the flow-detail template resource.

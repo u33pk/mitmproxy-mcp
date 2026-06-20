@@ -17,6 +17,9 @@ async def test_list_resources() -> None:
     assert "mitmproxy://proxy/status" in uris
     assert "mitmproxy://flows/latest" in uris
     assert "mitmproxy://config/rules" in uris
+    assert "mitmproxy://events/latest" in uris
+    assert "mitmproxy://crypto/scripts" in uris
+    assert "mitmproxy://ca/status" in uris
 
     templates = await mcp.list_resource_templates()
     assert any(t.uriTemplate == "mitmproxy://flows/{flow_id}" for t in templates)

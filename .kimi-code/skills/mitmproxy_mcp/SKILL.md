@@ -53,8 +53,11 @@ The server also exposes read-only resources that you can read directly:
 | `mitmproxy://flows/latest` | Get a lightweight summary of recent flows (no bodies) |
 | `mitmproxy://flows/{id}` | Read the full details of a specific flow |
 | `mitmproxy://config/rules` | See all active rules and loaded crypto scripts |
+| `mitmproxy://events/latest` | Recent internal events: proxy start/stop, captured flows, rule matches, crypto errors (last 10) |
+| `mitmproxy://crypto/scripts` | Loaded crypto handlers with error counts and last errors |
+| `mitmproxy://ca/status` | Current CA/certificate configuration |
 
-Use these to avoid repeated `http_ctl list` / `proxy_ctl status` calls. For example, attach `mitmproxy://flows/latest` to your context to quickly see what has been captured.
+Use these to avoid repeated `http_ctl list` / `proxy_ctl status` calls. For example, attach `mitmproxy://flows/latest` to your context to quickly see what has been captured, or `mitmproxy://events/latest` to watch for errors from loaded crypto scripts.
 
 ## Common workflows
 

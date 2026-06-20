@@ -336,6 +336,9 @@ class MyHandler(CryptoHandler):
 | `mitmproxy://flows/latest` | 最近 20 条 flow 摘要（无 body，低上下文占用） |
 | `mitmproxy://flows/{id}` | 单条 flow 完整详情 |
 | `mitmproxy://config/rules` | 当前所有规则与加解密脚本汇总 |
+| `mitmproxy://events/latest` | 最近 10 条内部事件摘要（代理启停、flow 捕获、规则匹配、crypto 错误等） |
+| `mitmproxy://crypto/scripts` | 已加载加解密脚本列表及错误状态 |
+| `mitmproxy://ca/status` | 完整 CA/证书配置（verify_upstream、上游 CA、客户端证书） |
 
 用法示例（概念）：
 
@@ -344,6 +347,9 @@ class MyHandler(CryptoHandler):
 读取 mitmproxy://flows/latest 快速浏览最近流量
 读取 mitmproxy://flows/42 查看第 42 条流量的完整详情
 读取 mitmproxy://config/rules 查看当前生效的所有规则
+读取 mitmproxy://events/latest 查看最近代理事件
+读取 mitmproxy://crypto/scripts 查看已加载的加密脚本状态
+读取 mitmproxy://ca/status 查看 CA/证书配置
 ```
 
 > 当前版本只支持读取，暂不支持订阅推送。

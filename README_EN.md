@@ -336,6 +336,9 @@ In addition to tools, the server exposes read-only MCP resources that clients ca
 | `mitmproxy://flows/latest` | Last 20 flow summaries (no bodies, low context usage) |
 | `mitmproxy://flows/{id}` | Full details of a single flow |
 | `mitmproxy://config/rules` | Snapshot of all active rules and crypto scripts |
+| `mitmproxy://events/latest` | Last 10 internal event summaries (proxy lifecycle, captured flows, rule matches, crypto errors) |
+| `mitmproxy://crypto/scripts` | Loaded encryption/decryption scripts and their error state |
+| `mitmproxy://ca/status` | Full CA/certificate configuration (verify_upstream, upstream CA, client cert) |
 
 Example usage (conceptual):
 
@@ -344,6 +347,9 @@ Read mitmproxy://proxy/status to check if the proxy is running
 Read mitmproxy://flows/latest to quickly browse recent traffic
 Read mitmproxy://flows/42 for the full details of flow #42
 Read mitmproxy://config/rules to see all active rules
+Read mitmproxy://events/latest for recent proxy events
+Read mitmproxy://crypto/scripts to see loaded crypto script status
+Read mitmproxy://ca/status to see the CA/certificate configuration
 ```
 
 > Current version supports reading only; subscription/push is not yet implemented.

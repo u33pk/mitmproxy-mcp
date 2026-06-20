@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mitmproxy_mcp.events import EventBuffer
 from mitmproxy_mcp.models import flow_to_model
 from mitmproxy_mcp.proxy import ProxyManager
 from mitmproxy_mcp.store import FlowStore
@@ -13,6 +14,9 @@ PROXY_STATUS_URI = "mitmproxy://proxy/status"
 FLOWS_LATEST_URI = "mitmproxy://flows/latest"
 FLOW_DETAIL_TEMPLATE = "mitmproxy://flows/{flow_id}"
 CONFIG_RULES_URI = "mitmproxy://config/rules"
+EVENTS_LATEST_URI = "mitmproxy://events/latest"
+CRYPTO_SCRIPTS_URI = "mitmproxy://crypto/scripts"
+CA_STATUS_URI = "mitmproxy://ca/status"
 
 
 def proxy_status_resource(proxy_manager: ProxyManager) -> dict[str, Any]:
@@ -78,3 +82,18 @@ def config_rules_resource(proxy_manager: ProxyManager) -> dict[str, Any]:
         "crypto_scripts": proxy_manager.list_crypto_scripts(),
         "websocket_rules": [r.model_dump(exclude_none=True) for r in proxy_manager.list_websocket_rules()],
     }
+
+
+def events_latest_resource(event_buffer: EventBuffer, limit: int = 10) -> list[dict[str, Any]]:
+    """Return the most recent lightweight events from the event buffer."""
+    return event_buffer.latest(limit=limit)
+
+
+def crypto_scripts_resource(proxy_manager: ProxyManager) -> list[dict[str, Any]]:
+    """Return a summary of all loaded crypto scripts, including error state."""
+    return proxy_manager.list_crypto_scripts()
+
+
+def ca_status_resource(proxy_manager: ProxyManager) -> dict[str, Any]:
+    """Return the current CA/certificate configuration."""
+    return proxy_manager.ca_status()

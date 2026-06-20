@@ -12,6 +12,8 @@ from mitmproxy import flowfilter
 from mitmproxy import http
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from mitmproxy_mcp.events import EventBuffer
+
 logger = logging.getLogger(__name__)
 
 
@@ -139,9 +141,10 @@ class WebSocketRule(BaseModel):
 class WebSocketRulesAddon:
     """mitmproxy addon that applies WebSocket message modification rules."""
 
-    def __init__(self) -> None:
+    def __init__(self, event_buffer: EventBuffer | None = None) -> None:
         self._lock = threading.RLock()
         self._rules: list[WebSocketRule] = []
+        self._event_buffer = event_buffer
 
     # ------------------------------------------------------------------
     # Rule management (called from the MCP tool thread)
@@ -180,7 +183,22 @@ class WebSocketRulesAddon:
             rules = list(self._rules)
 
         msg = flow.websocket.messages[-1]
+        applied_rule_id: str | None = None
+        dropped = False
         for rule in rules:
             dropped = rule.apply(flow, msg)
             if dropped:
+                applied_rule_id = rule.id
                 break
+
+        if self._event_buffer is not None and applied_rule_id is not None:
+            self._event_buffer.emit(
+                "websocket_rule:matched",
+                {
+                    "rule_id": applied_rule_id,
+                    "dropped": dropped,
+                    "host": flow.request.host,
+                    "path": flow.request.path,
+                    "from_client": msg.from_client,
+                },
+            )
