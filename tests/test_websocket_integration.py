@@ -8,7 +8,7 @@ import time
 import pytest
 import websockets
 
-from mitmproxy_mcp.server import flow_ctl, proxy_ctl
+from mitmproxy_mcp.server import flow_ctl, proxy_ctl, websocket_ctl
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +51,7 @@ async def _run_test() -> None:
         # Give mitmproxy a moment to process the close frame.
         time.sleep(1)
 
-        r = flow_ctl(cmd="list", websocket_only=True)
+        r = websocket_ctl(cmd="list")
         assert r["total"] >= 1, f"Expected at least one WebSocket flow, got {r}"
         ws_flow = r["flows"][0]
         assert ws_flow["is_websocket"] is True

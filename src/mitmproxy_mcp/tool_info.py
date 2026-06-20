@@ -59,10 +59,10 @@ TOOL_INFO: dict[str, ToolInfo] = {
         },
     },
     "flow_ctl": {
-        "summary": "Manage and inspect captured HTTP/WebSocket flows.",
+        "summary": "Manage and inspect captured HTTP flows.",
         "commands": {
             "list": {
-                "description": "List captured flows with optional filters and pagination.",
+                "description": "List captured HTTP flows with optional filters and pagination. For WebSocket flows use websocket_ctl.",
                 "required": [],
                 "optional": [
                     "offset (int, default 0)",
@@ -71,7 +71,6 @@ TOOL_INFO: dict[str, ToolInfo] = {
                     "method (str)",
                     "status (int)",
                     "search (str, regex)",
-                    "websocket_only (bool, default False)",
                 ],
                 "example": {"cmd": "list", "limit": 20},
             },

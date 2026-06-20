@@ -98,7 +98,6 @@ def _flows_list(
     method: str | None = None,
     status: int | None = None,
     search: str | None = None,
-    websocket_only: bool = False,
 ) -> dict[str, Any]:
     items = store.list(
         offset=offset,
@@ -107,10 +106,9 @@ def _flows_list(
         method=method,
         status=status,
         search=search,
-        websocket_only=websocket_only,
     )
     return {
-        "total": store.count(websocket_only=websocket_only),
+        "total": store.count(),
         "offset": offset,
         "limit": limit,
         "flows": [flow_to_model(f, store_id=i).model_dump() for i, f in items],
@@ -608,7 +606,6 @@ def flow_ctl(
     jsonpath: list[str] | None = None,
     target: Literal["request", "response"] | None = None,
     stop_proxy: bool = False,
-    websocket_only: bool = False,
 ) -> dict[str, Any]:
     """Manage captured flows. Commands: list, get, delete, clear, load, save, extract_json. Use tool_info('flow_ctl') for details."""
     try:
@@ -620,7 +617,6 @@ def flow_ctl(
                 method=method,
                 status=status,
                 search=search,
-                websocket_only=websocket_only,
             )
         if cmd == "get":
             if flow_id is None:
