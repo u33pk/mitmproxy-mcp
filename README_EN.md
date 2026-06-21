@@ -120,6 +120,23 @@ To pull specific values from JSON request or response bodies, use `http_ctl(cmd=
 }
 ```
 
+### HAR import/export
+
+Interoperate with Chrome DevTools, Charles, ProxyMan and other HAR consumers:
+
+```python
+# Export all captured flows to HAR
+http_ctl(cmd="export_har", path="/tmp/capture.har")
+
+# Export only selected flows
+http_ctl(cmd="export_har", path="/tmp/capture.har", flow_ids=[1, 2, 3])
+
+# Import flows from a HAR file into the store
+http_ctl(cmd="import_har", path="/tmp/capture.har")
+```
+
+Binary bodies are automatically base64-encoded. Failed HAR entries are skipped with a warning, leaving the rest intact.
+
 ### HTTPS traffic
 
 For HTTPS interception you must trust the mitmproxy CA certificate:
@@ -361,7 +378,7 @@ Read mitmproxy://ca/status to see the CA/certificate configuration
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
-| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json`, `export_har`, `import_har` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status` (user-defined encryption/decryption scripts) |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |

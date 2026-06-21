@@ -712,7 +712,10 @@ def websocket_ctl(
 
 @mcp.tool()
 def http_ctl(
-    cmd: Literal["list", "get", "delete", "clear", "load", "save", "extract_json"],
+    cmd: Literal[
+        "list", "get", "delete", "clear", "load", "save",
+        "extract_json", "export_har", "import_har",
+    ],
     flow_id: int | None = None,
     path: str | None = None,
     host: str | None = None,
@@ -726,8 +729,9 @@ def http_ctl(
     jsonpath: list[str] | None = None,
     target: Literal["request", "response"] | None = None,
     stop_proxy: bool = False,
+    flow_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Manage captured HTTP flows. Commands: list, get, delete, clear, load, save, extract_json. Use tool_info('http_ctl') for details."""
+    """Manage captured HTTP flows. Commands: list, get, delete, clear, load, save, extract_json, export_har, import_har. Use tool_info('http_ctl') for details."""
     try:
         if cmd == "list":
             return _http_flows_list(
@@ -768,6 +772,24 @@ def http_ctl(
             if path is None:
                 return {"success": False, "error": "path is required"}
             return _flows_save(path)
+        if cmd == "export_har":
+            if path is None:
+                return {"success": False, "error": "path is required"}
+            try:
+                count = store.save_har(path, flow_ids=flow_ids)
+                return {"success": True, "saved": count, "path": path}
+            except Exception as e:
+                logger.exception("Failed to export HAR")
+                return {"success": False, "error": str(e)}
+        if cmd == "import_har":
+            if path is None:
+                return {"success": False, "error": "path is required"}
+            try:
+                count = store.load_har(path)
+                return {"success": True, "loaded": count, "path": path}
+            except Exception as e:
+                logger.exception("Failed to import HAR")
+                return {"success": False, "error": str(e)}
         if cmd == "extract_json":
             if flow_id is None:
                 return {"success": False, "error": "flow_id is required"}

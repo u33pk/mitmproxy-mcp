@@ -118,6 +118,18 @@ TOOL_INFO: dict[str, ToolInfo] = {
                     "jsonpath": ["$.data[0].id"],
                 },
             },
+            "export_har": {
+                "description": "Export captured flows to a HAR (HTTP Archive) file. Compatible with Chrome DevTools, Charles and other HAR consumers.",
+                "required": ["path"],
+                "optional": ["flow_ids (list[int], export only selected flows; default all)"],
+                "example": {"cmd": "export_har", "path": "/tmp/capture.har"},
+            },
+            "import_har": {
+                "description": "Import flows from a HAR file into the in-memory store.",
+                "required": ["path"],
+                "optional": [],
+                "example": {"cmd": "import_har", "path": "/tmp/capture.har"},
+            },
         },
     },
     "flow_action": {

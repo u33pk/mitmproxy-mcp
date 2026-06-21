@@ -11,6 +11,8 @@ from typing import Any
 from mitmproxy import http
 from mitmproxy import io
 
+from mitmproxy_mcp import har
+
 
 class FlowStore:
     """Stores HTTPFlow objects with filtering, pagination and CRUD."""
@@ -158,6 +160,24 @@ class FlowStore:
             for flow in flows:
                 writer.add(flow)
         return len(flows)
+
+    def save_har(self, path: str, flow_ids: list[int] | None = None) -> int:
+        """Export selected (or all) flows to a HAR file. Returns number of entries written."""
+        with self._lock:
+            if flow_ids is not None:
+                flows = [self._flows[i] for i in flow_ids if i in self._flows]
+            else:
+                flows = list(self._flows.values())
+        return har.save_har(path, flows)
+
+    def load_har(self, path: str) -> int:
+        """Import flows from a HAR file. Returns number of flows imported."""
+        flows = har.load_har(path)
+        count = 0
+        for flow in flows:
+            self.add(flow)
+            count += 1
+        return count
 
     def snapshot(self) -> dict[int, Any]:
         """Return a shallow snapshot of current store ids for replay use."""

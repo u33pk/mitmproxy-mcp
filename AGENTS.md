@@ -78,9 +78,10 @@ Integration tests require a running proxy or a browser environment.
 ```
 server.py      FastMCP server; defines all tools and registers MCP resources
 proxy.py       ProxyManager + CaptureAddon + RulesAddon + CryptoAddon + MappingState; runs mitmproxy DumpMaster in a thread
-store.py       FlowStore: in-memory, thread-safe flow storage with CRUD/filtering
+store.py       FlowStore: in-memory, thread-safe flow storage with CRUD/filtering; native .mitm and HAR persistence
 models.py      Pydantic models for HTTPFlow serialization
 resources.py   MCP resource generators (proxy status, flow summaries, flow detail, config snapshot)
+har.py         HAR 1.2 import/export conversion between HTTPFlow and HAR documents
 crypto.py      CryptoHandler base class, CryptoResult, CryptoAddon and script loader
 rules.py       Automatic rule engine: match flows and apply actions
 mappings.py    MapLocalRule / MapRemoteRule models and MappingState
@@ -143,6 +144,19 @@ When the proxy is running, changes are applied via `proxy_manager.call("set", op
 `set_client_cert` combines certificate and optional key into a single PEM file under `~/.mitmproxy/` because mitmproxy's `client_certs` option expects one path.
 
 `clear_all()` does **not** clear CA configuration, since CA settings are a separate concern from flows, rules and mappings.
+
+## HAR import/export
+
+`src/mitmproxy_mcp/har.py` implements HAR 1.2 conversion:
+
+- `flows_to_har(flows)` produces a HAR document from `HTTPFlow` objects.
+- `har_to_flows(har)` reconstructs `HTTPFlow` objects from a HAR document.
+- Binary bodies are base64-encoded with `encoding: "base64"`.
+- Cookies are derived from `Cookie`/`Set-Cookie` headers; attributes are ignored on import.
+- `application/x-www-form-urlencoded` postData params are reconstructed into a body on import.
+- Invalid entries are skipped with a warning rather than aborting the whole import.
+
+`FlowStore.save_har(path, flow_ids=None)` and `FlowStore.load_har(path)` expose this through the store, and `http_ctl(cmd="export_har"|"import_har")` exposes it as MCP tool commands.
 
 ## WebSocket management (`websocket_ctl`)
 

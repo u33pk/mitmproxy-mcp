@@ -167,7 +167,18 @@ Every flow exposes a `protocol` object with HTTP version, ALPN, TLS version and 
 http_ctl(cmd="get", flow_id=1)["flow"]["protocol"]
 ```
 
-### 9. WireGuard transparent proxy
+### 9. Export/import HAR
+
+Share captures with Chrome DevTools, Charles or ProxyMan:
+
+```python
+http_ctl(cmd="export_har", path="/tmp/capture.har")
+http_ctl(cmd="import_har", path="/tmp/capture.har")
+```
+
+Use `flow_ids=[1, 2]` to export only selected flows.
+
+### 10. WireGuard transparent proxy
 
 Start the proxy in WireGuard mode to capture all traffic (including QUIC/HTTP3) from iOS, Android, macOS or Windows clients:
 

@@ -120,6 +120,23 @@ uv run mitmproxy-mcp --transport sse --host 127.0.0.1 --port 8081
 }
 ```
 
+### HAR 导入/导出
+
+支持与 Chrome DevTools、Charles、ProxyMan 等工具互操作：
+
+```python
+# 导出全部捕获流量为 HAR
+http_ctl(cmd="export_har", path="/tmp/capture.har")
+
+# 只导出指定 flow
+http_ctl(cmd="export_har", path="/tmp/capture.har", flow_ids=[1, 2, 3])
+
+# 从 HAR 文件导入流量到 store
+http_ctl(cmd="import_har", path="/tmp/capture.har")
+```
+
+二进制内容会自动 base64 编码；导入失败的单条 entry 会被跳过并记录日志，不影响其余 entry。
+
 ### HTTPS 流量
 
 拦截 HTTPS 需要信任 mitmproxy 的 CA 证书：
@@ -361,7 +378,7 @@ class MyHandler(CryptoHandler):
 | `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
 | `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
-| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
+| `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json`, `export_har`, `import_har` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
 | `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status`（用户自定义加解密脚本） |
 | `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
