@@ -20,6 +20,7 @@ from mitmproxy import http
 from mitmproxy import options
 from mitmproxy.addonmanager import Loader
 from mitmproxy.tools.dump import DumpMaster
+from mitmproxy.tools.web.master import WebMaster
 from mitmproxy_rs import wireguard
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -256,11 +257,11 @@ class CaConfig:
 
 
 class ProxyManager:
-    """Manages a mitmproxy DumpMaster running in a background thread."""
+    """Manages a mitmproxy DumpMaster or WebMaster running in a background thread."""
 
     def __init__(self, store: FlowStore) -> None:
         self.store = store
-        self._master: DumpMaster | None = None
+        self._master: DumpMaster | WebMaster | None = None
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ready = threading.Event()
@@ -283,6 +284,8 @@ class ProxyManager:
         ssl_insecure: bool,
         upstream_proxy: str | None,
         extra_options: dict[str, Any] | None,
+        webui: bool,
+        web_port: int,
     ) -> None:
         """Thread target that creates and runs the mitmproxy event loop."""
         self._loop = asyncio.new_event_loop()
@@ -305,9 +308,19 @@ class ProxyManager:
             opts_kwargs.update(extra_options)
         opts = options.Options(**opts_kwargs)
 
-        async def _setup() -> DumpMaster:
-            # DumpMaster needs a running event loop during construction.
-            master = DumpMaster(opts, with_termlog=False, with_dumper=False)
+        async def _setup() -> DumpMaster | WebMaster:
+            # DumpMaster/WebMaster needs a running event loop during construction.
+            if webui:
+                master: DumpMaster | WebMaster = WebMaster(opts, with_termlog=False)
+                # Web options are registered by WebAddon during master construction;
+                # set them after the master is created so they are recognized.
+                master.options.update(
+                    web_host=host,
+                    web_port=web_port,
+                    web_open_browser=False,
+                )
+            else:
+                master = DumpMaster(opts, with_termlog=False, with_dumper=False)
             self.capture_addon.set_capture_filter(capture_filter)
             master.addons.add(self.capture_addon)
             master.addons.add(self.rules_addon)
@@ -343,6 +356,24 @@ class ProxyManager:
     def capture_filter(self) -> str | None:
         return self._options.get("capture_filter")
 
+    @property
+    def webui(self) -> bool:
+        return bool(self._options.get("webui", False))
+
+    @property
+    def web_port(self) -> int | None:
+        return self._options.get("web_port")
+
+    @property
+    def web_url(self) -> str | None:
+        if not self.webui or self.web_port is None:
+            return None
+        # If the master is a WebMaster, use its computed URL (includes auth token).
+        if isinstance(self._master, WebMaster):
+            return self._master.web_url
+        host = self.listen_host or "127.0.0.1"
+        return f"http://{host}:{self.web_port}"
+
     def start(
         self,
         host: str = "127.0.0.1",
@@ -351,6 +382,8 @@ class ProxyManager:
         ssl_insecure: bool = False,
         upstream_proxy: str | None = None,
         extra_options: dict[str, Any] | None = None,
+        webui: bool = False,
+        web_port: int = 8081,
     ) -> dict[str, Any]:
         """Start mitmproxy in a background thread."""
         with self._lock:
@@ -367,7 +400,7 @@ class ProxyManager:
             self._ready.clear()
             self._thread = threading.Thread(
                 target=self._run_proxy,
-                args=(host, port, capture_filter, ssl_insecure, upstream_proxy, prepared_options),
+                args=(host, port, capture_filter, ssl_insecure, upstream_proxy, prepared_options, webui, web_port),
                 daemon=True,
             )
             self._thread.start()
@@ -385,11 +418,19 @@ class ProxyManager:
                 "ssl_insecure": ssl_insecure,
                 "upstream_proxy": upstream_proxy,
                 "extra_options": prepared_options,
+                "webui": webui,
+                "web_port": web_port,
             }
 
         self.event_buffer.emit(
             "proxy:started",
-            {"host": host, "port": port, "capture_filter": capture_filter},
+            {
+                "host": host,
+                "port": port,
+                "capture_filter": capture_filter,
+                "webui": webui,
+                "web_port": web_port if webui else None,
+            },
         )
         logger.info(f"mitmproxy started on {host}:{port}")
         result: dict[str, Any] = {
@@ -397,7 +438,11 @@ class ProxyManager:
             "host": host,
             "port": port,
             "capture_filter": capture_filter,
+            "webui": webui,
         }
+        if webui:
+            result["web_port"] = web_port
+            result["web_url"] = self.web_url
         if prepared_options:
             result["extra_options"] = prepared_options
         if wg_config:
@@ -472,7 +517,7 @@ class ProxyManager:
     # URL mappings
     # ------------------------------------------------------------------
 
-    def _sync_mapping_options(self, master: DumpMaster | None = None) -> None:
+    def _sync_mapping_options(self, master: DumpMaster | WebMaster | None = None) -> None:
         """Update mitmproxy map_local/map_remote options from current state.
 
         If ``master`` is provided, update directly; otherwise use ``call()``
@@ -921,7 +966,11 @@ class ProxyManager:
                 "port": self.listen_port,
                 "capture_filter": self.capture_filter,
                 "captured_flows": self.store.count(),
+                "webui": self.webui,
             }
+            if self.webui:
+                result["web_port"] = self.web_port
+                result["web_url"] = self.web_url
             if self._wireguard_config is not None:
                 result["wireguard_config"] = self._wireguard_config
                 result["wireguard_endpoint"] = f"{self.listen_host}:{self.listen_port}"

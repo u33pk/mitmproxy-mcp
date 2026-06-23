@@ -137,6 +137,8 @@ def _proxy_start(
     ssl_insecure: bool = False,
     upstream_proxy: str | None = None,
     extra_options: dict[str, Any] | None = None,
+    webui: bool = False,
+    web_port: int = 8081,
 ) -> dict[str, Any]:
     return proxy_manager.start(
         host=host,
@@ -145,6 +147,8 @@ def _proxy_start(
         ssl_insecure=ssl_insecure,
         upstream_proxy=upstream_proxy,
         extra_options=extra_options,
+        webui=webui,
+        web_port=web_port,
     )
 
 
@@ -517,6 +521,8 @@ def proxy_ctl(
     upstream_proxy: str | None = None,
     extra_options: dict[str, Any] | None = None,
     stop_proxy: bool = False,
+    webui: bool = False,
+    web_port: int = 8081,
 ) -> dict[str, Any]:
     """Control the proxy. Commands: start, stop, status, list_options, clear_all, wireguard_config. Use tool_info('proxy_ctl') for details."""
     try:
@@ -528,6 +534,8 @@ def proxy_ctl(
                 ssl_insecure=ssl_insecure,
                 upstream_proxy=upstream_proxy,
                 extra_options=extra_options,
+                webui=webui,
+                web_port=web_port,
             )
         if cmd == "stop":
             return proxy_manager.stop()

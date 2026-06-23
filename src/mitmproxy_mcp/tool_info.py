@@ -14,7 +14,7 @@ TOOL_INFO: dict[str, ToolInfo] = {
         "summary": "Start, stop and inspect the mitmproxy capture proxy.",
         "commands": {
             "start": {
-                "description": "Start the capture proxy in a background thread.",
+                "description": "Start the capture proxy in a background thread. Set webui=True to also start mitmproxy's built-in web interface.",
                 "required": [],
                 "optional": [
                     "host (str, default 127.0.0.1)",
@@ -23,8 +23,10 @@ TOOL_INFO: dict[str, ToolInfo] = {
                     "ssl_insecure (bool, default False)",
                     "upstream_proxy (str, e.g. http://host:port)",
                     "extra_options (dict, passed to mitmproxy options.Options)",
+                    "webui (bool, default False)",
+                    "web_port (int, default 8081)",
                 ],
-                "example": {"cmd": "start", "port": 8080},
+                "example": {"cmd": "start", "port": 8080, "webui": True, "web_port": 8081},
             },
             "stop": {
                 "description": "Stop the running proxy.",

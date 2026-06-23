@@ -65,8 +65,11 @@ Use these to avoid repeated `http_ctl list` / `proxy_ctl status` calls. For exam
 
 ```python
 proxy_ctl(cmd="start", port=8080)
+# Or start with mitmproxy's built-in web UI on port 8081
+proxy_ctl(cmd="start", port=8080, webui=True, web_port=8081)
+
 # User configures browser/client to use 127.0.0.1:8080
-proxy_ctl(cmd="status")
+proxy_ctl(cmd="status")  # includes web_url when webui=True
 http_ctl(cmd="list", limit=20)
 http_ctl(cmd="get", flow_id=1, max_content_size=4096)
 ```
