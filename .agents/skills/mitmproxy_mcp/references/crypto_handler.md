@@ -300,8 +300,9 @@ The error appears in `crypt_ctl(cmd="status", script_id="...")` and is logged.
 ```python
 from mitmproxy_mcp.utils import create_http_flow
 from mitmproxy_mcp.crypto import CryptoAddon
+from mitmproxy_mcp.store import FlowStore
 
-addon = CryptoAddon()
+addon = CryptoAddon(store=FlowStore())
 # load your script...
 flow = create_http_flow("POST", "http://api.example.com/api", body=b"cipher")
 addon.request(flow)

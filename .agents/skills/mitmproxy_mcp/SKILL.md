@@ -29,7 +29,7 @@ Entry point: `mitmproxy_mcp.server:main` (stdio transport for Claude Desktop).
 | `proxy_ctl` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` | Proxy lifecycle |
 | `ca_ctl` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` | Certificate / CA management |
 | `websocket_ctl` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` | WebSocket inspection / injection / rules |
-| `http_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` | Inspect/manage flows |
+| `http_ctl` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json`, `export_har`, `import_har` | Inspect/manage flows |
 | `flow_action` | `replay`, `resume`, `kill`, `update`, `create`, `send` | Operate on flows |
 | `crypt_ctl` | `list`, `load`, `unload`, `reload`, `status` | User-defined encryption/decryption scripts |
 | `rule_ctl` | `list`, `add`, `delete`, `clear` | Automatic modification rules |
@@ -195,7 +195,7 @@ proxy_ctl(cmd="wireguard_config")
 
 > Trust the mitmproxy CA on the client to decrypt HTTPS/HTTP3.
 
-### 10. User-defined encryption/decryption (`crypt_ctl`)
+### 11. User-defined encryption/decryption (`crypt_ctl`)
 
 For applications with user-space encryption, write a Python script that subclasses `CryptoHandler` and load it dynamically:
 
