@@ -1,6 +1,6 @@
 # Installation Guide for LLMs
 
-This guide explains how to install the `mitmproxy-mcp` MCP server and register its skill so an LLM client (e.g. Claude Desktop) can use it.
+This guide explains how to install the `mitmproxy-mcp` MCP server, register its skill, and uninstall it.
 
 ## What is mitmproxy-mcp
 
@@ -36,12 +36,7 @@ This guide explains how to install the `mitmproxy-mcp` MCP server and register i
    uv pip install -e .
    ```
 
-3. (Optional) Install development dependencies if you want to run tests:
-   ```bash
-   uv pip install -e ".[dev]"
-   ```
-
-4. Verify the server starts:
+3. Verify the server starts:
    ```bash
    uv run mitmproxy-mcp
    # Should start and wait for MCP JSON-RPC messages on stdin.
@@ -63,7 +58,14 @@ uv run mitmproxy-mcp
 
 ## Configure an MCP client
 
-### Claude Desktop (stdio transport)
+Before generating the client configuration, ask the user which transport to use:
+
+- **stdio** (default) — recommended for Claude Desktop and most local agents.
+- **sse** — useful for remote clients such as Claude Code, Cursor, or when running the server as a standalone HTTP service.
+
+Default to `stdio` if the user does not specify a preference.
+
+### stdio transport (default)
 
 Edit Claude Desktop's MCP configuration file:
 
@@ -90,12 +92,12 @@ Add the following server entry. Replace `/path/to/mitmproxy-mcp` with the absolu
 
 This uses `uv run` inside the project directory so the correct virtual environment is used.
 
-### SSE transport (optional)
+### SSE transport
 
-If you prefer to run the server as a standalone HTTP service and connect via SSE, start it with:
+If the user chooses SSE, start the server as a standalone HTTP service:
 
 ```bash
-uv run python -m mitmproxy_mcp --transport sse --port 8081
+uv run mitmproxy-mcp --transport sse --host 127.0.0.1 --port 8081
 ```
 
 Then configure the client with:
@@ -159,49 +161,6 @@ To capture HTTPS traffic, the client device/browser must trust mitmproxy's CA ce
 3. Install the certificate on the client system or browser as a trusted root CA.
 
 For local development, you can also find mitmproxy's default CA files in `~/.mitmproxy/`.
-
-## Verify the installation
-
-### Run unit tests
-
-```bash
-uv run pytest tests/ -q
-```
-
-Expected output: all unit tests pass.
-
-### Run integration tests (optional)
-
-These require a running proxy or browser environment:
-
-```bash
-# All MCP tools end-to-end
-uv run pytest tests/test_all_tools.py -m integration -v
-
-# URL mappings
-uv run pytest tests/test_mappings_integration.py -m integration -v
-
-# WebSocket capture
-uv run pytest tests/test_websocket_integration.py -m integration -v
-```
-
-### Quick smoke test
-
-1. Start the proxy via MCP:
-   ```python
-   proxy_ctl(cmd="start", port=8080, webui=True, web_port=8081)
-   ```
-
-2. Configure your browser to use `127.0.0.1:8080`.
-
-3. Visit any HTTP/HTTPS site.
-
-4. List captured flows:
-   ```python
-   http_ctl(cmd="list", limit=10)
-   ```
-
-5. Open the web UI at the URL returned by `proxy_ctl(cmd="status")`.
 
 ## Update or uninstall
 

@@ -25,6 +25,14 @@ uv venv
 uv pip install -e .
 ```
 
+## 通过 Agent 安装
+
+复制以下内容发送给任意 Agent，让它根据提示完成安装：
+
+```text
+安装 mitmproxy-mcp MCP 服务和配套 skill。请阅读 https://raw.githubusercontent.com/u33pk/mitmproxy-mcp/refs/heads/main/INSTALL.md 中的内容，根据提示安装 mcp 和配套 skill。
+```
+
 ## Claude Desktop 配置
 
 将以下内容添加到你的 Claude Desktop 配置中（macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows/Linux 路径可能不同）：
