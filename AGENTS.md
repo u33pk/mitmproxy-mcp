@@ -94,9 +94,17 @@ utils.py       Helpers: create_http_flow, replay_flows, save_flows, decode_body
 - `FlowStore` assigns monotonically increasing integer IDs (`mitmproxy_mcp_id`) to each `HTTPFlow`.
 - `ProxyManager.call()` is the only thread-safe way to invoke mitmproxy commands on the running event loop.
 - Replay and save use mitmproxy's native commands (`replay.client`, `save.file`) rather than reimplementing logic.
-- `CaptureAddon` filters flows with `capture_filter` and a runtime-updatable list of `CaptureRule` objects (`include`/`exclude`).
+- `CaptureAddon` filters flows with `capture_filter` and a runtime-updatable list of `CaptureRule` objects (`include`/`exclude`). It tags each captured flow with `metadata["mitmproxy_mcp_source_proxy"]` to record which proxy instance captured it.
 - `RulesAddon` runs inside the mitmproxy event loop; its rule list is protected by an `RLock` and can be updated from the MCP tool thread.
 - `CryptoAddon` runs inside the mitmproxy event loop and applies user-loaded `CryptoHandler` scripts to decrypt/encrypt HTTP/WebSocket traffic.
+
+### Auxiliary proxy (dual-proxy)
+
+The server supports an optional auxiliary proxy (`aux_proxy_manager`) for chained proxy scenarios where encryption/decryption is split across two mitmproxy instances. Both proxies share the same `FlowStore` but have independent `CaptureAddon`, `CryptoAddon`, `RulesAddon` and `WebSocketRulesAddon` instances.
+
+Tools that operate on flows (`flow_action` replay/resume/kill, `websocket_ctl` inject) automatically route to the correct proxy based on `flow.metadata["mitmproxy_mcp_source_proxy"]`. Other tools accept a `proxy_id` parameter (`"main"` or `"aux"`, default `"main"`) for explicit routing.
+
+The auxiliary proxy is entirely optional — it is only used when the user calls `proxy_ctl(cmd="start", proxy_id="aux", ...)`.
 
 ## Automatic rules
 
@@ -336,13 +344,14 @@ uv pip install -e ".[dev]"
 
 | Tool | Commands |
 |------|----------|
-| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
+| `proxy_ctl(cmd, proxy_id, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
-| `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
+| `websocket_ctl(cmd, proxy_id, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
-| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
-| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
+| `crypt_ctl(cmd, proxy_id, ...)` | `list`, `load`, `unload`, `reload`, `status` |
+| `rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear` |
+| `capture_rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear` |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
 | `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |
 | `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` |

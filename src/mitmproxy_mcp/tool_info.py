@@ -11,12 +11,13 @@ ToolInfo = dict[str, Any]
 
 TOOL_INFO: dict[str, ToolInfo] = {
     "proxy_ctl": {
-        "summary": "Start, stop and inspect the mitmproxy capture proxy.",
+        "summary": "Start, stop and inspect the mitmproxy capture proxy. Supports a main proxy and an optional auxiliary proxy via proxy_id.",
         "commands": {
             "start": {
-                "description": "Start the capture proxy in a background thread. Set webui=True to also start mitmproxy's built-in web interface.",
+                "description": "Start the capture proxy in a background thread. Set webui=True to also start mitmproxy's built-in web interface. Use proxy_id='aux' to start the auxiliary proxy.",
                 "required": [],
                 "optional": [
+                    "proxy_id ('main' or 'aux', default 'main')",
                     "host (str, default 127.0.0.1)",
                     "port (int, default 8080)",
                     "capture_filter (str, optional mitmproxy flowfilter expression)",
@@ -29,13 +30,13 @@ TOOL_INFO: dict[str, ToolInfo] = {
                 "example": {"cmd": "start", "port": 8080, "webui": True, "web_port": 8081},
             },
             "stop": {
-                "description": "Stop the running proxy.",
+                "description": "Stop the running proxy. Use proxy_id='aux' to stop the auxiliary proxy.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "stop"},
             },
             "status": {
-                "description": "Return proxy running state, listen address and captured flow count.",
+                "description": "Return proxy running state, listen address and captured flow count. Automatically includes auxiliary proxy info if it is running.",
                 "required": [],
                 "optional": [],
                 "example": {"cmd": "status"},
@@ -43,7 +44,7 @@ TOOL_INFO: dict[str, ToolInfo] = {
             "wireguard_config": {
                 "description": "Return the WireGuard client configuration when the proxy was started in WireGuard mode. The returned INI can be imported into iOS, Android, macOS or Windows WireGuard clients. Certificate trust is still required for HTTPS/HTTP3 decryption.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "wireguard_config"},
             },
             "list_options": {
@@ -53,9 +54,9 @@ TOOL_INFO: dict[str, ToolInfo] = {
                 "example": {"cmd": "list_options"},
             },
             "clear_all": {
-                "description": "Clear all flows, rules, capture rules and mappings. Optionally stop the proxy.",
+                "description": "Clear all flows, rules, capture rules and mappings. Optionally stop the proxy. Use proxy_id='aux' to target the auxiliary proxy.",
                 "required": [],
-                "optional": ["stop_proxy (bool, default False)"],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')", "stop_proxy (bool, default False)"],
                 "example": {"cmd": "clear_all", "stop_proxy": False},
             },
         },
@@ -185,18 +186,18 @@ TOOL_INFO: dict[str, ToolInfo] = {
         },
     },
     "rule_ctl": {
-        "summary": "Manage automatic request/response modification rules.",
+        "summary": "Manage automatic request/response modification rules. Use proxy_id to target the auxiliary proxy.",
         "commands": {
             "list": {
                 "description": "List all automatic rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "list"},
             },
             "add": {
                 "description": "Add or replace an automatic rule. Existing rule with same id is overwritten.",
                 "required": ["rule"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {
                     "cmd": "add",
                     "rule": {
@@ -210,30 +211,30 @@ TOOL_INFO: dict[str, ToolInfo] = {
             "delete": {
                 "description": "Delete a rule by id.",
                 "required": ["rule_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "delete", "rule_id": "mock"},
             },
             "clear": {
                 "description": "Delete all automatic rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "clear"},
             },
         },
     },
     "capture_rule_ctl": {
-        "summary": "Manage include/exclude capture rules.",
+        "summary": "Manage include/exclude capture rules. Use proxy_id to target the auxiliary proxy.",
         "commands": {
             "list": {
                 "description": "List all capture rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "list"},
             },
             "add": {
                 "description": "Add or replace a capture rule. Existing rule with same id is overwritten.",
                 "required": ["rule"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {
                     "cmd": "add",
                     "rule": {"id": "api", "filter": "~u api.example.com", "action": "include"},
@@ -242,13 +243,13 @@ TOOL_INFO: dict[str, ToolInfo] = {
             "delete": {
                 "description": "Delete a capture rule by id.",
                 "required": ["rule_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "delete", "rule_id": "api"},
             },
             "clear": {
                 "description": "Delete all capture rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "clear"},
             },
         },
@@ -411,42 +412,42 @@ TOOL_INFO: dict[str, ToolInfo] = {
         },
     },
     "crypt_ctl": {
-        "summary": "Load and manage user-written encryption/decryption scripts for transparent traffic transformation.",
+        "summary": "Load and manage user-written encryption/decryption scripts for transparent traffic transformation. Use proxy_id to target the auxiliary proxy.",
         "commands": {
             "list": {
                 "description": "List all loaded crypto handler scripts with error counts.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "list"},
             },
             "load": {
                 "description": "Load a CryptoHandler script from a Python file. The script must define a CryptoHandler subclass.",
                 "required": ["script_path"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "load", "script_path": "/path/to/crypto_script.py"},
             },
             "unload": {
                 "description": "Unload a crypto script by id.",
                 "required": ["script_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "unload", "script_id": "my-handler"},
             },
             "reload": {
                 "description": "Reload an already loaded crypto script by id.",
                 "required": ["script_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "reload", "script_id": "my-handler"},
             },
             "status": {
                 "description": "Show detailed status for a loaded crypto script, including the last error.",
                 "required": ["script_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "status", "script_id": "my-handler"},
             },
         },
     },
     "websocket_ctl": {
-        "summary": "Manage WebSocket connections: inspect, inject, connect and modify messages with rules.",
+        "summary": "Manage WebSocket connections: inspect, inject, connect and modify messages with rules. Use proxy_id to target the auxiliary proxy.",
         "commands": {
             "list": {
                 "description": "List captured WebSocket flows.",
@@ -461,7 +462,7 @@ TOOL_INFO: dict[str, ToolInfo] = {
                 "example": {"cmd": "get", "flow_id": 1, "max_content_size": 4096},
             },
             "inject": {
-                "description": "Inject a message into an existing WebSocket connection.",
+                "description": "Inject a message into an existing WebSocket connection. Automatically routes to the proxy that captured the flow.",
                 "required": ["flow_id", "message"],
                 "optional": ["to_client (bool, default True)", "binary (bool, default False)"],
                 "example": {"cmd": "inject", "flow_id": 1, "message": "hello from mcp", "to_client": False},
@@ -470,6 +471,7 @@ TOOL_INFO: dict[str, ToolInfo] = {
                 "description": "Actively open a WebSocket connection through the running proxy and capture it.",
                 "required": ["url"],
                 "optional": [
+                    "proxy_id ('main' or 'aux', default 'main')",
                     "headers (list[Header])",
                     "subprotocols (list[str])",
                     "messages (list[str])",
@@ -481,13 +483,13 @@ TOOL_INFO: dict[str, ToolInfo] = {
             "list_rules": {
                 "description": "List WebSocket message modification rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "list_rules"},
             },
             "add_rule": {
                 "description": "Add a rule that modifies or drops WebSocket messages in real time.",
                 "required": ["rule"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {
                     "cmd": "add_rule",
                     "rule": {
@@ -503,13 +505,13 @@ TOOL_INFO: dict[str, ToolInfo] = {
             "delete_rule": {
                 "description": "Delete a WebSocket rule by id.",
                 "required": ["rule_id"],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "delete_rule", "rule_id": "replace-ping"},
             },
             "clear_rules": {
                 "description": "Delete all WebSocket rules.",
                 "required": [],
-                "optional": [],
+                "optional": ["proxy_id ('main' or 'aux', default 'main')"],
                 "example": {"cmd": "clear_rules"},
             },
         },
