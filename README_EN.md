@@ -11,6 +11,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
   - **View**: `http_ctl(cmd="list")`, `http_ctl(cmd="get")`
   - **Replay**: `flow_action(action="replay")`, `flow_action(action="send")` — backed by mitmproxy's native `replay.client`
   - **Modify**: `flow_action(action="update")`, `flow_action(action="create")`
+- **Auxiliary proxy (optional)** — run a second mitmproxy instance for split encryption/decryption in chained proxy setups.
 - **Built on mitmproxy's own engine** for replay and save, so we don't reinvent the wheel.
 - **stdio transport** for out-of-the-box Claude Desktop compatibility.
 - **SSE transport** for remote or network-based MCP clients (Claude Code, Cursor, etc.).
@@ -351,6 +352,63 @@ See `examples/crypto_xor_example.py` (simple XOR) and `examples/crypto_dynamic_k
 - Look up a previous handshake flow in `decrypt_request` to derive a session key.
 - Return `CryptoResult(error="...")` so the reason surfaces in `crypt_ctl status`.
 
+## Auxiliary proxy (dual-proxy chained encryption)
+
+Supports running a second mitmproxy instance (auxiliary proxy) for split encryption/decryption in chained proxy setups.
+
+### Typical scenario
+
+```
+Client → mitmA (port 8080) → Burp/other tool → mitmB (port 8082) → Server
+```
+
+- **mitmA** (main proxy): decrypts client requests, encrypts responses back to client
+- **mitmB** (auxiliary proxy): encrypts requests to server, decrypts server responses
+
+Both proxies share the same FlowStore; all captured traffic is visible in `http_ctl`.
+
+### Usage
+
+```python
+# 1. Start main proxy
+proxy_ctl(cmd="start", port=8080)
+
+# 2. Start auxiliary proxy (different port)
+proxy_ctl(cmd="start", proxy_id="aux", port=8082)
+
+# 3. Load encryption scripts separately
+crypt_ctl(cmd="load", script_path="/path/to/decrypt_a.py")                    # main
+crypt_ctl(cmd="load", proxy_id="aux", script_path="/path/to/encrypt_b.py")    # aux
+
+# 4. View status (auto-merged for both proxies)
+proxy_ctl(cmd="status")
+
+# 5. Stop auxiliary proxy
+proxy_ctl(cmd="stop", proxy_id="aux")
+```
+
+### Tools that support proxy_id
+
+These tools route to the specified proxy via `proxy_id` (`"main"` or `"aux"`, default `"main"`):
+
+| Tool | Routing behavior |
+|------|------------------|
+| `proxy_ctl` | `start`/`stop`/`clear_all`/`wireguard_config` route by proxy_id; `status` auto-merges |
+| `crypt_ctl` | Crypto scripts are isolated per proxy_id |
+| `rule_ctl` | Automatic rules are isolated per proxy_id |
+| `capture_rule_ctl` | Capture rules are isolated per proxy_id |
+| `websocket_ctl` | `inject` auto-routes by flow source; `connect`/rules route by proxy_id |
+
+These tools operate on shared data and do not need proxy_id:
+
+| Tool | Notes |
+|------|-------|
+| `http_ctl` | Operates on shared FlowStore; traffic from both proxies is visible |
+| `flow_action` | `replay`/`resume`/`kill` auto-route to the correct proxy based on flow source |
+| `flow_action(update/create/send)` | Operates on FlowStore data, no proxy routing |
+| `mock_server_ctl` | Always runs on the main proxy |
+| `map_local_ctl` / `map_remote_ctl` | Always runs on the main proxy |
+
 ## MCP Resources
 
 In addition to tools, the server exposes read-only MCP resources that clients can read like files, reducing the need for repeated tool calls:
@@ -383,14 +441,14 @@ Read mitmproxy://ca/status to see the CA/certificate configuration
 
 | Tool | Commands / Description |
 |------|------------------------|
-| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
+| `proxy_ctl(cmd, proxy_id, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
-| `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
+| `websocket_ctl(cmd, proxy_id, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json`, `export_har`, `import_har` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
-| `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status` (user-defined encryption/decryption scripts) |
-| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
-| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |
+| `crypt_ctl(cmd, proxy_id, ...)` | `list`, `load`, `unload`, `reload`, `status` (user-defined encryption/decryption scripts) |
+| `rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear` (automatic rules) |
+| `capture_rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear` (capture include/exclude rules) |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
 | `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL → local file) |
 | `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear` (URL rewrite) |

@@ -54,7 +54,8 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("mitmproxy-mcp")
 store = FlowStore()
-proxy_manager = ProxyManager(store)
+proxy_manager = ProxyManager(store, source_proxy="main")
+aux_proxy_manager = ProxyManager(store, source_proxy="aux")
 
 
 # =============================================================================
@@ -83,7 +84,10 @@ def config_rules() -> dict[str, Any]:
 @mcp.resource(EVENTS_LATEST_URI, name="Latest Events", mime_type="application/json")
 def events_latest() -> list[dict[str, Any]]:
     """Recent internal events (proxy lifecycle, captured flows, rule matches, crypto errors)."""
-    return events_latest_resource(proxy_manager.event_buffer)
+    main_events = events_latest_resource(proxy_manager.event_buffer, limit=10)
+    aux_events = events_latest_resource(aux_proxy_manager.event_buffer, limit=10)
+    combined = sorted(main_events + aux_events, key=lambda e: e.get("timestamp", 0), reverse=True)
+    return combined[:10]
 
 
 @mcp.resource(CRYPTO_SCRIPTS_URI, name="Crypto Scripts", mime_type="application/json")
@@ -113,6 +117,20 @@ mcp._resource_manager.add_template(
 # =============================================================================
 
 
+def _get_proxy_by_id(proxy_id: str) -> ProxyManager:
+    """Return the proxy manager for the given id ('main' or 'aux')."""
+    if proxy_id == "aux":
+        return aux_proxy_manager
+    return proxy_manager
+
+
+def _get_source_proxy_for_flow(flow: http.HTTPFlow) -> str:
+    """Return the proxy id that captured the given flow (defaults to 'main')."""
+    if flow.metadata:
+        return flow.metadata.get("mitmproxy_mcp_source_proxy", "main")
+    return "main"
+
+
 def _get_flow_or_raise(flow_id: int) -> http.HTTPFlow:
     flow = store.get(flow_id)
     if flow is None:
@@ -131,6 +149,7 @@ def _get_flows_by_ids(flow_ids: list[int]) -> list[http.HTTPFlow]:
 
 
 def _proxy_start(
+    target_proxy: ProxyManager | None = None,
     host: str = "127.0.0.1",
     port: int = 8080,
     capture_filter: str | None = None,
@@ -140,7 +159,8 @@ def _proxy_start(
     webui: bool = False,
     web_port: int = 8081,
 ) -> dict[str, Any]:
-    return proxy_manager.start(
+    target = target_proxy or proxy_manager
+    return target.start(
         host=host,
         port=port,
         capture_filter=capture_filter,
@@ -404,33 +424,39 @@ def _request_send(
 
 def _flow_replay(flow_id: int, use_modified: bool = True) -> dict[str, Any]:
     flow = _get_flow_or_raise(flow_id)
-    if not proxy_manager.is_running:
+    source = _get_source_proxy_for_flow(flow)
+    target = _get_proxy_by_id(source)
+    if not target.is_running:
         return {
             "success": False,
-            "error": "Proxy is not running. Start it with proxy_start before replaying.",
+            "error": f"Proxy '{source}' is not running. Start it before replaying.",
         }
-    return replay_flows(proxy_manager.call, [flow], use_modified=use_modified)
+    return replay_flows(target.call, [flow], use_modified=use_modified)
 
 
 def _flow_resume(flow_id: int) -> dict[str, Any]:
     flow = _get_flow_or_raise(flow_id)
-    if not proxy_manager.is_running:
+    source = _get_source_proxy_for_flow(flow)
+    target = _get_proxy_by_id(source)
+    if not target.is_running:
         return {
             "success": False,
-            "error": "Proxy is not running. Start it with proxy_start before resuming.",
+            "error": f"Proxy '{source}' is not running. Start it before resuming.",
         }
-    proxy_manager.call("flow.resume", [flow])
+    target.call("flow.resume", [flow])
     return {"success": True}
 
 
 def _flow_kill(flow_id: int) -> dict[str, Any]:
     flow = _get_flow_or_raise(flow_id)
-    if not proxy_manager.is_running:
+    source = _get_source_proxy_for_flow(flow)
+    target = _get_proxy_by_id(source)
+    if not target.is_running:
         return {
             "success": False,
-            "error": "Proxy is not running. Start it with proxy_start before killing.",
+            "error": f"Proxy '{source}' is not running. Start it before killing.",
         }
-    proxy_manager.call("flow.kill", [flow])
+    target.call("flow.kill", [flow])
     return {"success": True}
 
 
@@ -514,6 +540,7 @@ def proxy_ctl(
     cmd: Literal[
         "start", "stop", "status", "list_options", "clear_all", "wireguard_config"
     ],
+    proxy_id: Literal["main", "aux"] = "main",
     host: str = "127.0.0.1",
     port: int = 8080,
     capture_filter: str | None = None,
@@ -527,7 +554,9 @@ def proxy_ctl(
     """Control the proxy. Commands: start, stop, status, list_options, clear_all, wireguard_config. Use tool_info('proxy_ctl') for details."""
     try:
         if cmd == "start":
+            target = _get_proxy_by_id(proxy_id)
             return _proxy_start(
+                target_proxy=target,
                 host=host,
                 port=port,
                 capture_filter=capture_filter,
@@ -538,15 +567,21 @@ def proxy_ctl(
                 web_port=web_port,
             )
         if cmd == "stop":
-            return proxy_manager.stop()
+            target = _get_proxy_by_id(proxy_id)
+            return target.stop()
         if cmd == "status":
-            return proxy_manager.status()
+            result = proxy_manager.status()
+            if aux_proxy_manager.is_running:
+                result["aux_proxy"] = aux_proxy_manager.status()
+            return result
         if cmd == "wireguard_config":
-            return proxy_manager.wireguard_config()
+            target = _get_proxy_by_id(proxy_id)
+            return target.wireguard_config()
         if cmd == "list_options":
             return _proxy_list_options()
         if cmd == "clear_all":
-            return proxy_manager.clear_all(stop_proxy=stop_proxy)
+            target = _get_proxy_by_id(proxy_id)
+            return target.clear_all(stop_proxy=stop_proxy)
         return {"success": False, "error": f"Unknown proxy command: {cmd}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -610,29 +645,31 @@ def _websocket_get(flow_id: int, include_content: bool, max_content_size: int | 
 @mcp.tool()
 def crypt_ctl(
     cmd: Literal["list", "load", "unload", "reload", "status"],
+    proxy_id: Literal["main", "aux"] = "main",
     script_path: str | None = None,
     script_id: str | None = None,
 ) -> dict[str, Any]:
     """Load and manage user-written encryption/decryption scripts. Commands: list, load, unload, reload, status. Use tool_info('crypt_ctl') for details."""
     try:
+        target = _get_proxy_by_id(proxy_id)
         if cmd == "list":
-            return {"success": True, "scripts": proxy_manager.list_crypto_scripts()}
+            return {"success": True, "scripts": target.list_crypto_scripts()}
         if cmd == "load":
             if script_path is None:
                 return {"success": False, "error": "script_path is required"}
-            return proxy_manager.load_crypto_script(script_path)
+            return target.load_crypto_script(script_path)
         if cmd == "unload":
             if script_id is None:
                 return {"success": False, "error": "script_id is required"}
-            return proxy_manager.unload_crypto_script(script_id)
+            return target.unload_crypto_script(script_id)
         if cmd == "reload":
             if script_id is None:
                 return {"success": False, "error": "script_id is required"}
-            return proxy_manager.reload_crypto_script(script_id)
+            return target.reload_crypto_script(script_id)
         if cmd == "status":
             if script_id is None:
                 return {"success": False, "error": "script_id is required"}
-            status = proxy_manager.get_crypto_script_status(script_id)
+            status = target.get_crypto_script_status(script_id)
             if status is None:
                 return {"success": False, "error": f"Crypto script '{script_id}' not found"}
             return {"success": True, "script": status}
@@ -647,6 +684,7 @@ def websocket_ctl(
         "list", "get", "inject", "connect",
         "list_rules", "add_rule", "delete_rule", "clear_rules",
     ],
+    proxy_id: Literal["main", "aux"] = "main",
     flow_id: int | None = None,
     to_client: bool = True,
     message: str = "",
@@ -682,12 +720,18 @@ def websocket_ctl(
         if cmd == "inject":
             if flow_id is None:
                 return {"success": False, "error": "flow_id is required"}
-            return proxy_manager.inject_websocket(flow_id, to_client, message, binary)
+            flow = store.get(flow_id)
+            if flow is None:
+                return {"success": False, "error": f"Flow with id {flow_id} not found"}
+            source = _get_source_proxy_for_flow(flow)
+            target = _get_proxy_by_id(source)
+            return target.inject_websocket(flow_id, to_client, message, binary)
         if cmd == "connect":
             if url is None:
                 return {"success": False, "error": "url is required"}
+            target = _get_proxy_by_id(proxy_id)
             header_dict = {h.name: h.value for h in headers} if headers else None
-            return proxy_manager.connect_websocket(
+            return target.connect_websocket(
                 url=url,
                 headers=header_dict,
                 subprotocols=subprotocols,
@@ -696,22 +740,26 @@ def websocket_ctl(
                 timeout=timeout,
             )
         if cmd == "list_rules":
-            rules = proxy_manager.list_websocket_rules()
+            target = _get_proxy_by_id(proxy_id)
+            rules = target.list_websocket_rules()
             return {"success": True, "rules": [r.model_dump() for r in rules]}
         if cmd == "add_rule":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
             from mitmproxy_mcp.websocket_rules import WebSocketRule
+            target = _get_proxy_by_id(proxy_id)
             ws_rule = WebSocketRule(**rule)
-            proxy_manager.add_websocket_rule(ws_rule)
+            target.add_websocket_rule(ws_rule)
             return {"success": True, "rule": ws_rule.model_dump()}
         if cmd == "delete_rule":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
-            deleted = proxy_manager.delete_websocket_rule(rule_id)
+            target = _get_proxy_by_id(proxy_id)
+            deleted = target.delete_websocket_rule(rule_id)
             return {"success": deleted, "deleted": deleted}
         if cmd == "clear_rules":
-            count = proxy_manager.clear_websocket_rules()
+            target = _get_proxy_by_id(proxy_id)
+            count = target.clear_websocket_rules()
             return {"success": True, "cleared": count}
         return {"success": False, "error": f"Unknown websocket command: {cmd}"}
     except Exception as e:
@@ -903,28 +951,30 @@ def flow_action(
 @mcp.tool()
 def rule_ctl(
     cmd: Literal["list", "add", "delete", "clear"],
+    proxy_id: Literal["main", "aux"] = "main",
     rule: dict[str, Any] | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
     """Automatic rules. Commands: list, add, delete, clear. Use tool_info('rule_ctl') for details."""
     try:
+        target = _get_proxy_by_id(proxy_id)
         if cmd == "list":
-            rules = proxy_manager.list_rules()
+            rules = target.list_rules()
             return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
             rule_obj = Rule(**rule)
-            proxy_manager.add_rule(rule_obj)
+            target.add_rule(rule_obj)
             return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
-            if proxy_manager.delete_rule(rule_id):
+            if target.delete_rule(rule_id):
                 return {"success": True}
             return {"success": False, "error": f"Rule with id {rule_id} not found"}
         if cmd == "clear":
-            count = proxy_manager.clear_rules()
+            count = target.clear_rules()
             return {"success": True, "cleared": count}
         return {"success": False, "error": f"Unknown rule command: {cmd}"}
     except Exception as e:
@@ -934,31 +984,33 @@ def rule_ctl(
 @mcp.tool()
 def capture_rule_ctl(
     cmd: Literal["list", "add", "delete", "clear"],
+    proxy_id: Literal["main", "aux"] = "main",
     rule: dict[str, Any] | None = None,
     rule_id: str | None = None,
 ) -> dict[str, Any]:
     """Capture rules. Commands: list, add, delete, clear. Use tool_info('capture_rule_ctl') for details."""
     try:
+        target = _get_proxy_by_id(proxy_id)
         if cmd == "list":
-            rules = proxy_manager.list_capture_rules()
+            rules = target.list_capture_rules()
             return {"success": True, "rules": [r.model_dump(exclude_none=True) for r in rules]}
         if cmd == "add":
             if rule is None:
                 return {"success": False, "error": "rule is required"}
             rule_obj = CaptureRule(**rule)
-            proxy_manager.add_capture_rule(rule_obj)
+            target.add_capture_rule(rule_obj)
             return {"success": True, "rule": rule_obj.model_dump(exclude_none=True)}
         if cmd == "delete":
             if rule_id is None:
                 return {"success": False, "error": "rule_id is required"}
-            if proxy_manager.delete_capture_rule(rule_id):
+            if target.delete_capture_rule(rule_id):
                 return {"success": True}
             return {
                 "success": False,
                 "error": f"Capture rule with id {rule_id} not found",
             }
         if cmd == "clear":
-            count = proxy_manager.clear_capture_rules()
+            count = target.clear_capture_rules()
             return {"success": True, "cleared": count}
         return {"success": False, "error": f"Unknown capture rule command: {cmd}"}
     except Exception as e:

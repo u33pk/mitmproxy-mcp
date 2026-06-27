@@ -11,6 +11,7 @@
   - **查看**: `http_ctl(cmd="list")`, `http_ctl(cmd="get")`
   - **重放**: `flow_action(action="replay")`, `flow_action(action="send")` —— 基于 mitmproxy 原生 `replay.client`
   - **修改**: `flow_action(action="update")`, `flow_action(action="create")`
+- **辅助代理（可选）** 支持同时运行第二个 mitmproxy 实例，用于链式代理场景下的加解密分工。
 - **基于 mitmproxy 自身引擎** 实现重放和保存，不重复造轮子。
 - **stdio 传输**，开箱兼容 Claude Desktop。
 - **SSE 传输**，可远程或网络客户端连接（Claude Code、Cursor 等）。
@@ -351,6 +352,63 @@ class MyHandler(CryptoHandler):
 - 在 `decrypt_request` 中查询历史 handshake 流量来推导会话密钥。
 - 返回 `CryptoResult(error="...")` 在 `crypt_ctl status` 中向 LLM 报告原因。
 
+## 辅助代理（双代理链式加解密）
+
+支持同时运行第二个 mitmproxy 实例（辅助代理），适用于链式代理场景下的加解密分工。
+
+### 典型场景
+
+```
+客户端 → mitmA (端口 8080) → Burp/其他代理 → mitmB (端口 8082) → 服务器
+```
+
+- **mitmA**（主代理）：解密客户端请求，加密返回给客户端的响应
+- **mitmB**（辅助代理）：加密发往服务器的请求，解密服务器响应
+
+两个代理共享同一个 FlowStore，捕获的流量统一在 `http_ctl` 中查看。
+
+### 使用方式
+
+```python
+# 1. 启动主代理
+proxy_ctl(cmd="start", port=8080)
+
+# 2. 启动辅助代理（不同端口）
+proxy_ctl(cmd="start", proxy_id="aux", port=8082)
+
+# 3. 分别加载加解密脚本
+crypt_ctl(cmd="load", script_path="/path/to/decrypt_a.py")                    # 主代理
+crypt_ctl(cmd="load", proxy_id="aux", script_path="/path/to/encrypt_b.py")    # 辅助代理
+
+# 4. 查看状态（自动合并显示两个代理）
+proxy_ctl(cmd="status")
+
+# 5. 停止辅助代理
+proxy_ctl(cmd="stop", proxy_id="aux")
+```
+
+### 支持 proxy_id 的工具
+
+以下工具通过 `proxy_id`（`"main"` 或 `"aux"`，默认 `"main"`）路由到指定代理：
+
+| 工具 | 路由行为 |
+|------|----------|
+| `proxy_ctl` | `start`/`stop`/`clear_all`/`wireguard_config` 按 proxy_id 路由；`status` 自动合并显示 |
+| `crypt_ctl` | 加解密脚本按 proxy_id 隔离，互不干扰 |
+| `rule_ctl` | 自动规则按 proxy_id 隔离 |
+| `capture_rule_ctl` | 捕获规则按 proxy_id 隔离 |
+| `websocket_ctl` | `inject` 自动按 flow 来源路由；`connect`/规则操作按 proxy_id 路由 |
+
+以下工具不需要 `proxy_id`，始终操作共享数据：
+
+| 工具 | 说明 |
+|------|------|
+| `http_ctl` | 操作共享 FlowStore，两个代理的流量统一查看 |
+| `flow_action` | `replay`/`resume`/`kill` 自动按 flow 来源路由到正确的代理 |
+| `flow_action(update/create/send)` | 操作 FlowStore 数据，不涉及代理路由 |
+| `mock_server_ctl` | 始终在主代理上运行 |
+| `map_local_ctl` / `map_remote_ctl` | 始终在主代理上运行 |
+
 ## MCP Resources
 
 除 tools 外，服务器还暴露一组只读的 MCP resources，客户端可以像读取文件一样直接获取状态，减少 tool 调用次数：
@@ -383,14 +441,14 @@ class MyHandler(CryptoHandler):
 
 | 工具 | 命令 / 说明 |
 |------|------------|
-| `proxy_ctl(cmd, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
+| `proxy_ctl(cmd, proxy_id, ...)` | `start`, `stop`, `status`, `list_options`, `clear_all`, `wireguard_config` |
 | `ca_ctl(cmd, ...)` | `status`, `export_ca`, `set_verify_upstream`, `set_upstream_ca`, `clear_upstream_ca`, `set_client_cert`, `clear_client_cert` |
-| `websocket_ctl(cmd, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
+| `websocket_ctl(cmd, proxy_id, ...)` | `list`, `get`, `inject`, `connect`, `list_rules`, `add_rule`, `delete_rule`, `clear_rules` |
 | `http_ctl(cmd, ...)` | `list`, `get`, `delete`, `clear`, `load`, `save`, `extract_json`, `export_har`, `import_har` |
 | `flow_action(action, ...)` | `replay`, `resume`, `kill`, `update`, `create`, `send` |
-| `crypt_ctl(cmd, ...)` | `list`, `load`, `unload`, `reload`, `status`（用户自定义加解密脚本） |
-| `rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
-| `capture_rule_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（捕获 include/exclude 规则） |
+| `crypt_ctl(cmd, proxy_id, ...)` | `list`, `load`, `unload`, `reload`, `status`（用户自定义加解密脚本） |
+| `rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear`（自动规则） |
+| `capture_rule_ctl(cmd, proxy_id, ...)` | `list`, `add`, `delete`, `clear`（捕获 include/exclude 规则） |
 | `mock_server_ctl(cmd, ...)` | `start`, `add`, `stop`, `status` |
 | `map_local_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（URL → 本地文件） |
 | `map_remote_ctl(cmd, ...)` | `list`, `add`, `delete`, `clear`（URL 重写） |
