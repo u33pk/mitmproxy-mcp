@@ -72,6 +72,7 @@ class CaptureAddon:
         capture_filter: str | None = None,
         capture_rules: list[CaptureRule] | None = None,
         event_buffer: EventBuffer | None = None,
+        source_proxy: str = "main",
     ) -> None:
         self.store = store
         self.capture_filter = capture_filter
@@ -79,6 +80,7 @@ class CaptureAddon:
         self._lock = threading.RLock()
         self._capture_rules: list[CaptureRule] = []
         self._event_buffer = event_buffer
+        self._source_proxy = source_proxy
         self._compile_filter()
         if capture_rules:
             self.set_rules(capture_rules)
@@ -189,12 +191,18 @@ class CaptureAddon:
 
     def response(self, flow: http.HTTPFlow) -> None:
         if self.should_capture(flow):
+            if flow.metadata is None:
+                flow.metadata = {}
+            flow.metadata["mitmproxy_mcp_source_proxy"] = self._source_proxy
             store_id = self.store.add(flow)
             self._emit_flow_captured(store_id, flow)
 
     def error(self, flow: http.HTTPFlow) -> None:
         # Also capture failed flows so errors are visible.
         if self.should_capture(flow):
+            if flow.metadata is None:
+                flow.metadata = {}
+            flow.metadata["mitmproxy_mcp_source_proxy"] = self._source_proxy
             store_id = self.store.add(flow)
             self._emit_flow_captured(store_id, flow)
 
@@ -207,6 +215,9 @@ class CaptureAddon:
         # ensure the WebSocket flow is tracked in case filters behave
         # differently at upgrade time.
         if self.should_capture(flow):
+            if flow.metadata is None:
+                flow.metadata = {}
+            flow.metadata["mitmproxy_mcp_source_proxy"] = self._source_proxy
             store_id = self.store.add(flow)
             self._emit_flow_captured(store_id, flow)
             if self._event_buffer is not None:
@@ -259,7 +270,7 @@ class CaConfig:
 class ProxyManager:
     """Manages a mitmproxy DumpMaster or WebMaster running in a background thread."""
 
-    def __init__(self, store: FlowStore) -> None:
+    def __init__(self, store: FlowStore, source_proxy: str = "main") -> None:
         self.store = store
         self._master: DumpMaster | WebMaster | None = None
         self._thread: threading.Thread | None = None
@@ -270,7 +281,7 @@ class ProxyManager:
         self._wireguard_config: str | None = None
         self._ca_config = CaConfig()
         self.event_buffer = EventBuffer()
-        self.capture_addon = CaptureAddon(self.store, event_buffer=self.event_buffer)
+        self.capture_addon = CaptureAddon(self.store, event_buffer=self.event_buffer, source_proxy=source_proxy)
         self.rules_addon = RulesAddon(event_buffer=self.event_buffer)
         self.websocket_rules_addon = WebSocketRulesAddon(event_buffer=self.event_buffer)
         self.crypto_addon = CryptoAddon(self.store, event_buffer=self.event_buffer)
@@ -843,8 +854,13 @@ class ProxyManager:
         to_client: bool,
         message: str,
         binary: bool = False,
+        target: ProxyManager | None = None,
     ) -> dict[str, Any]:
-        """Inject a message into an existing WebSocket connection."""
+        """Inject a message into an existing WebSocket connection.
+
+        If *target* is provided, the inject command runs in that proxy's event
+        loop (useful when the flow was captured by a different proxy instance).
+        """
         flow = self.store.get(store_id)
         if flow is None:
             return {"success": False, "error": f"Flow with id {store_id} not found"}
@@ -852,8 +868,9 @@ class ProxyManager:
             return {"success": False, "error": "Flow is not a WebSocket connection"}
 
         msg_bytes = message.encode("utf-8") if not binary else base64.b64decode(message)
+        proxy = target or self
         try:
-            self.call("inject.websocket", flow, to_client, msg_bytes, not binary)
+            proxy.call("inject.websocket", flow, to_client, msg_bytes, not binary)
         except Exception as e:
             return {"success": False, "error": f"Failed to inject message: {e}"}
         return {"success": True, "injected": 1}
